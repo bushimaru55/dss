@@ -1,5 +1,5 @@
 # cursor-env
-Cursor の Rules / Commands / Subagents / Skills と aIdocs（運用ナレッジ）を Git で管理するリポジトリ。
+Cursor の Rules / Commands / Subagents / Skills と AIdocs（運用ナレッジ）を Git で管理するリポジトリ。
 
 ## 方針
 - 秘密情報（APIキー/トークン/パスワード/個人情報）は置かない
