@@ -1,0 +1,11 @@
+.DS_Store
+
+# Secrets (置かない前提だが念のため)
+.env
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Editor
+.vscode/
