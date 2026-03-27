@@ -1,14 +1,39 @@
-# AIdocs INDEX（入口）
+# AIdocs INDEX
 
-このフォルダは「プロジェクトの仕様・運用・手順」の唯一の基準（Single Source of Truth）です。
+本ディレクトリは **Data Solution Studio** の Single Source of Truth です。  
+設計、環境、運用手順、確認結果、変更履歴はすべて AIdocs に記録します。
 
-## 推奨の参照順
-1. environments/ : 環境ごとの差分・接続方法・制約
-2. systems/      : システム構成・依存関係・設計方針
-3. runbooks/     : 手順書（デプロイ/復旧/検証/定常作業）
-4. faq/          : よくある質問・小さなTips
+## ドキュメント方針
+- コード変更だけで終わらせず、関連する設計・runbook・verification を更新する
+- 実装前に設計を整理する
+- 実装後に確認結果を verification に残す
+- 運用手順は runbooks に残す
 
-## 追記ルール（必須）
-- 秘密情報は書かない（参照方法のみ記載）
-- 変更は「日付 + 変更点 + 理由 + 影響範囲」を添える
-- 仕様が未確定なら、未確定であることと判断材料を明記する
+## 環境
+- [環境概要](environments/00_OVERVIEW.md)
+- [ローカル環境](environments/local.md)
+- [本番環境（ConoHa VPS）](environments/prod-conoha-vps.md)
+
+## システム設計
+- [Data Solution Studio 概要](systems/architecture/data-solution-studio-overview.md)
+- [Docker Compose 構成](systems/architecture/docker-compose-architecture.md)
+- [Django app 構成](systems/architecture/django-app-structure.md)
+- [ストレージ戦略](systems/architecture/storage-strategy.md)
+- [ConoHa VPS 配置構成](systems/architecture/deployment-architecture-conoha-vps.md)
+
+## Runbooks
+- [初期セットアップ（local）](runbooks/initial-setup-local.md)
+- [初期セットアップ（ConoHa VPS）](runbooks/initial-setup-conoha-vps.md)
+- [Docker Compose 運用](runbooks/docker-compose-operations.md)
+- [migrate / collectstatic](runbooks/django-migrate-and-collectstatic.md)
+- [worker 運用](runbooks/worker-operations.md)
+- [Object Storage 設定](runbooks/object-storage-setup.md)
+
+## Verification
+- [初期コンテナ build 結果](verification/initial-container-build-report.md)
+- [local 起動確認](verification/local-startup-verification.md)
+- [nginx / gunicorn 確認](verification/nginx-gunicorn-verification.md)
+- [PostgreSQL / Redis 確認](verification/postgres-redis-verification.md)
+
+## Changes
+- [2026-03-27 初期基盤構築](changes/2026-03-27-initial-foundation.md)
