@@ -1,0 +1,133 @@
+{% extends "enduser/base.html" %}
+{% block content %}
+<div class="card">
+  <h2>ステップ2：ファイル内容の確認（行・列・項目名）</h2>
+  <p class="muted">ステップ1でアップロードした <strong>{{ dataset.name }}</strong> の内容確認です。ここから項目の確認を進めてください。</p>
+  <ol class="muted" style="margin:0;padding-left:20px">
+    <li><strong>項目名</strong>が合っているか（下の「項目名一覧」）</li>
+    <li><strong>項目名が書かれた行</strong>の番号が合っているか</li>
+    <li><strong>1行が1件分のデータ</strong>として見えているか</li>
+  </ol>
+</div>
+
+{% if not sheet %}
+<div class="card"><p>読み取れるシートが見つかりません。ファイルを再アップロードしてください。</p></div>
+{% else %}
+
+<div class="card" style="background:#f8fafc;border-style:dashed">
+  <p style="margin:0"><strong>進め方:</strong> 1) 読み込み設定 → 2) 項目名と表示を確認 → 3) 内容を決定</p>
+</div>
+
+<form method="get" class="card">
+  <h3>① 読み込み設定</h3>
+  {% if dataset.file_type == "xlsx" %}
+  <div style="margin-bottom:12px">
+    <label for="sheet_id"><strong>読み込むシート</strong></label>
+    <select name="sheet_id" id="sheet_id" style="margin-left:8px;padding:8px;min-width:220px">
+      {% for sh in sheets %}
+      <option value="{{ sh.id }}" {% if sheet and sh.id == sheet.id %}selected{% endif %}>{{ sh.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% else %}
+  <input type="hidden" name="sheet_id" value="{{ sheet.id }}"/>
+  <p class="muted">CSV はシートが1つです。</p>
+  {% endif %}
+
+  <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+    <label for="header_row"><strong>項目名が書かれた行（1行目=1）</strong></label>
+    <input id="header_row" name="header_row" type="number" min="1" step="1" placeholder="空欄なら自動" value="{{ header_input }}" style="width:140px;padding:8px;border-radius:8px;border:1px solid #98a2b3"/>
+    {% if detected_hint %}
+    <button type="button" class="btn secondary" onclick="document.getElementById('header_row').value='{{ detected_hint }}';">候補 {{ detected_hint }} 行目を使う</button>
+    {% endif %}
+    <span class="muted">通常は空欄でOK。合わないときだけ入力してください。</span>
+  </div>
+
+  <div style="margin-bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+    <label for="preview_rows"><strong>確認表示する行数</strong></label>
+    <select id="preview_rows" name="preview_rows" style="padding:8px;border-radius:8px;border:1px solid #98a2b3">
+      <option value="10" {% if preview_rows == 10 %}selected{% endif %}>10</option>
+      <option value="25" {% if preview_rows == 25 %}selected{% endif %}>25</option>
+      <option value="50" {% if preview_rows == 50 %}selected{% endif %}>50</option>
+      <option value="100" {% if preview_rows == 100 %}selected{% endif %}>100</option>
+    </select>
+  </div>
+
+  <div style="margin-bottom:12px">
+    <span><strong>表示のしかた</strong></span>
+    <label style="margin-left:8px"><input type="radio" name="view" value="interpreted" {% if view_mode == "interpreted" %}checked{% endif %}/> 分析用の見え方（項目名つき）</label>
+    <label style="margin-left:8px"><input type="radio" name="view" value="raw" {% if view_mode == "raw" %}checked{% endif %}/> 元の見え方（ファイルそのまま）</label>
+  </div>
+
+  <button class="btn secondary" type="submit">この設定で表示を確認する</button>
+</form>
+
+{% if view_mode == "interpreted" and interpreted_columns %}
+<div class="card">
+  <h3>② 項目名の確認</h3>
+  <p class="muted">項目名が想定どおりか確認してください。違う場合は上で「項目名が書かれた行」を直してください。</p>
+  <p class="muted" style="margin-bottom:8px">項目数: <strong>{{ interpreted_columns|length }}</strong>{% if header_row_effective %} / 項目名の行: <strong>{{ header_row_effective }} 行目</strong>{% endif %}</p>
+  <div class="chips">
+    {% for c in interpreted_columns %}<span title="{{ c }}">{{ c }}</span>{% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h3>② 確認表示</h3>
+  {% if view_mode == "raw" and raw_grid %}
+  <p class="muted">左の # は元ファイルの行番号です。項目名がどの行かを確認してください。</p>
+  <div style="overflow:auto;max-height:420px;border:1px solid #d0d5dd;border-radius:8px">
+    <table>
+      <thead>
+      <tr>
+        <th style="position:sticky;left:0;background:#f7f8fb">#</th>
+        {% for _ in raw_grid.0 %}<th class="muted">列{{ forloop.counter }}</th>{% endfor %}
+      </tr>
+      </thead>
+      <tbody>
+      {% for row in raw_grid %}
+      <tr>
+        <td style="position:sticky;left:0;background:#f7f8fb">{{ forloop.counter }}</td>
+        {% for cell in row %}<td title="{{ cell }}">{{ cell }}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% elif interpreted_columns %}
+  <p class="muted">分析用の見え方です。左の「Excel行」は元ファイル上の行番号です。</p>
+  <div style="overflow:auto;max-height:420px;border:1px solid #d0d5dd;border-radius:8px">
+    <table>
+      <thead><tr><th style="position:sticky;left:0;background:#f7f8fb">Excel行</th>{% for c in interpreted_columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+      <tbody>
+        {% for excel_row, row in interpreted_table_rows %}
+        <tr><td style="position:sticky;left:0;background:#f7f8fb">{{ excel_row }}</td>{% for cell in row %}<td title="{{ cell }}">{{ cell }}</td>{% endfor %}</tr>
+        {% empty %}
+        <tr><td colspan="{{ interpreted_columns|length|add:1 }}" class="muted">表示できるデータがありません。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">表示できるデータがありません。設定を変更してもう一度確認してください。</p>
+  {% endif %}
+</div>
+
+<div class="card" style="border-color:#1b6ca8">
+  <h3>ステップ2-完了：内容を決定する</h3>
+  <p class="muted">最終確認: シート <strong>{{ sheet.name }}</strong> / 項目名の行 <strong>{% if header_input %}{{ header_input }}{% elif header_row_effective %}{{ header_row_effective }}（自動）{% else %}自動{% endif %}</strong></p>
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="confirm_import"/>
+    <input type="hidden" name="sheet_id" value="{{ sheet.id }}"/>
+    <input type="hidden" name="header_row" value="{{ header_input }}"/>
+    <label style="display:flex;align-items:center;gap:10px;margin:12px 0;min-height:44px">
+      <input type="checkbox" name="record_grain_ack" value="on" required style="width:20px;height:20px"/>
+      表示内容を確認しました（1行が1件分のデータ）
+    </label>
+    <button class="btn" type="submit">この内容で決定して分析に進む</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

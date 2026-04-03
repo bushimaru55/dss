@@ -1,0 +1,142 @@
+{% extends "enduser/base.html" %}
+{% block content %}
+<div class="card">
+  <h2>{{ dataset.name }}</h2>
+  <p><a href="{% url 'enduser-dataset-import' dataset.id %}">インポート確認（行・列・列名）</a></p>
+  <p class="muted">status: {{ dataset.status }} / type: {{ dataset.file_type }}</p>
+  {% if sheet and sheet.structure_status == "needs_review" %}
+  <div style="margin:12px 0;padding:14px;border-radius:8px;border:1px solid #f0b429;background:#fff9e6">
+    <strong>表構造の確認が必要です</strong>
+    <p class="muted" style="margin:8px 0">列名行（ヘッダー行）が自動判定だけでは不確かです。次のいずれかを行ってから、質問・分析を続けてください。</p>
+    <ul class="muted" style="margin:8px 0;padding-left:20px">
+      <li>現在の自動検出ヘッダー行: <strong>{{ sheet.analysis.detected_header_row|default:"—" }}</strong> 行目（Excel/CSV とも 1 始まり）</li>
+      {% if sheet.analysis.sheet_analysis %}
+      {% with sa=sheet.analysis.sheet_analysis %}
+        {% if sa.structure_ambiguity and sa.structure_ambiguity.reasons %}
+        <li>検出理由: {{ sa.structure_ambiguity.reasons|join:", " }}</li>
+        {% endif %}
+      {% endwith %}
+      {% endif %}
+    </ul>
+    <form method="post" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="confirm_structure_auto"/>
+      <button class="btn secondary" type="submit">このヘッダー行で問題ない（確定）</button>
+    </form>
+    <form method="post" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="apply_header_row"/>
+      <label for="header_row" class="muted">ヘッダー行を指定（1 始まり）</label>
+      <input id="header_row" name="header_row" type="number" min="1" step="1" placeholder="例: 4" style="width:100px;padding:8px;border-radius:8px;border:1px solid #e6e8ef"/>
+      <button class="btn" type="submit">指定して再プロファイル</button>
+    </form>
+  </div>
+  {% endif %}
+  <form method="post" style="display:inline">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="prepare_analysis"/>
+    <button class="btn" type="submit">分析準備を実行（profile + semantic + suggestions）</button>
+  </form>
+</div>
+
+<div class="card">
+  <h3>シート選択（Excel）</h3>
+  {% if dataset.file_type == "xlsx" and dataset.sheets.all %}
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="select_sheet"/>
+    <label for="sheet_id" class="muted">シート</label>
+    <select name="sheet_id" id="sheet_id" style="margin:0 8px;padding:6px;min-width:200px">
+      {% for sh in dataset.sheets.all %}
+      <option value="{{ sh.id }}" {% if sh.selected %}selected{% endif %}>{{ sh.name }} (rows {{ sh.row_count|default:"—" }})</option>
+      {% endfor %}
+    </select>
+    <button class="btn secondary" type="submit">切り替え</button>
+  </form>
+  {% elif dataset.file_type == "xlsx" %}
+  <p class="muted">シート一覧がありません。アップロードをやり直してください。</p>
+  {% else %}
+  <p class="muted">CSV のためシート選択はありません。</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>選択シート</h3>
+  {% if sheet %}
+    <p>name: {{ sheet.name }} / rows: {{ sheet.row_count }} / cols: {{ sheet.column_count }}</p>
+    <p class="muted">構造ステータス: {{ sheet.get_structure_status_display }}（ヘッダー行の手動指定: {% if sheet.header_row_override %}{{ sheet.header_row_override }} 行目{% else %}なし（自動）{% endif %}）</p>
+    {% if sheet.analysis %}
+      <details class="muted"><summary>プロファイル詳細（JSON）</summary><pre style="white-space:pre-wrap;font-size:12px;margin-top:8px">{{ sheet.analysis }}</pre></details>
+    {% endif %}
+  {% else %}
+    <p>シート未選択</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h3>列プロファイル</h3>
+  <table>
+    <thead><tr><th>column</th><th>normalized</th><th>dtype</th><th>null</th><th>unique</th><th>semantic</th></tr></thead>
+    <tbody>
+      {% for c in columns %}
+      <tr>
+        <td>{{ c.column_name }}</td>
+        <td>{{ c.normalized_name }}</td>
+        <td>{{ c.inferred_type }}</td>
+        <td>{{ c.null_ratio }}</td>
+        <td>{{ c.unique_ratio }}</td>
+        <td>{{ c.semantic_label }} ({{ c.semantic_label_source }})</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">まだプロファイルがありません。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>分析候補</h3>
+  {% for s in suggestions %}
+    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-bottom:8px">
+      <strong>{{ s.title }}</strong>
+      <div class="muted">priority: {{ s.priority }} / source: {{ s.source }}</div>
+      <p>{{ s.description }}</p>
+      <div class="chips">
+        {% for rc in s.required_columns %}<span>{{ rc }}</span>{% endfor %}
+      </div>
+    </div>
+  {% empty %}
+    <p>まだ候補がありません。上の「分析準備を実行」を押してください。</p>
+  {% endfor %}
+</div>
+
+<div class="card">
+  <h3>データについて質問（簡易チャット）</h3>
+  <p class="muted">このデータセットに紐づく集計と RAG 根拠で回答します（同期実行。API の <code>/api/chat/ask</code> は非同期ワーカー用）。</p>
+  {% if sheet and sheet.structure_status == "needs_review" %}
+  <p style="color:#b42318">表構造が未確認のため、質問を送信できません。上の「表構造の確認」で確定してください。</p>
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="chat"/>
+    <textarea name="question" rows="3" style="width:100%;box-sizing:border-box;padding:8px;border-radius:8px;border:1px solid #e6e8ef" placeholder="例: 売上の合計と顧客別の上位を教えて" {% if sheet and sheet.structure_status == "needs_review" %}disabled{% endif %}></textarea>
+    <p style="margin-top:8px"><button class="btn" type="submit" {% if sheet and sheet.structure_status == "needs_review" %}disabled{% endif %}>送信</button></p>
+  </form>
+  {% if last_run %}
+  <div style="margin-top:14px;padding:12px;background:#f0f4f8;border-radius:8px">
+    <div class="muted">run #{{ last_run.id }} / {{ last_run.status }}</div>
+    {% if last_run.status == "failed" %}
+    <p style="color:#b42318">{{ last_run.error_message }}</p>
+    {% else %}
+    <p style="white-space:pre-wrap">{{ last_run.answer }}</p>
+    {% if last_run.next_actions %}
+    <p class="muted">次のアクション:</p>
+    <ul>
+      {% for a in last_run.next_actions %}<li>{{ a }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

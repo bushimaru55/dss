@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Data Solution Studio</title>
+  <style>
+    body{font-family:system-ui,-apple-system,sans-serif;background:#f7f8fb;margin:0;color:#1c2430;line-height:1.7;font-size:16px}
+    header{background:#173c5a;color:#fff;padding:12px 20px;display:flex;justify-content:space-between;align-items:center}
+    main{max-width:1024px;margin:20px auto;padding:0 16px}
+    .card{background:#fff;border:1px solid #e6e8ef;border-radius:10px;padding:16px;margin-bottom:14px}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #d0d5dd;padding:10px;text-align:left;font-size:15px}
+    .btn{background:#1b6ca8;color:#fff;border:none;border-radius:8px;padding:10px 16px;min-height:44px;font-size:16px;font-weight:600;cursor:pointer}
+    .btn.secondary{background:#6b7788}
+    .muted{color:#475467;font-size:15px}
+    .chips span{display:inline-block;background:#eef4ff;border:1px solid #d7e3ff;border-radius:20px;padding:4px 10px;margin:2px;font-size:14px}
+    .msg{padding:10px;border-radius:8px;margin-bottom:12px;background:#e8f7ed;color:#195c34}
+    a{color:#1b6ca8;text-decoration:underline}
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>Data Solution Studio</strong> <span class="muted">データの閲覧・管理</span></div>
+    <div>
+      {% if user.is_authenticated %}
+      <a href="/app/" style="color:#fff;margin-right:12px">ダッシュボード</a>
+      <a href="/app/logout" style="color:#fff">ログアウト</a>
+      {% endif %}
+    </div>
+  </header>
+  <main>
+    {% for message in messages %}
+      <div class="msg">{{ message }}</div>
+    {% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{% extends "enduser/base.html" %}
+{% block content %}
+<div class="card">
+  <h2>マイデータ（一覧）</h2>
+  <p class="muted" style="margin-top:0">操作は2ステップです：① 分析するファイルをアップロード ② ファイル内容を確認して項目確認を進める。</p>
+  <a class="btn" href="{% url 'enduser-dataset-new' %}">ステップ1：新規アップロード</a>
+</div>
+<div class="card">
+  <table>
+    <thead><tr><th>ID</th><th>名前</th><th>状態</th><th>ワークスペース</th><th>操作</th></tr></thead>
+    <tbody>
+      {% for d in datasets %}
+      <tr>
+        <td>{{ d.id }}</td>
+        <td>{{ d.name }}</td>
+        <td>{{ d.status }}</td>
+        <td>{{ d.workspace.name }}</td>
+        <td>
+          <a href="{% url 'enduser-dataset-detail' d.id %}">詳細</a>
+          · <a href="{% url 'enduser-dataset-import' d.id %}">ステップ2：内容確認</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5">データセットはまだありません。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

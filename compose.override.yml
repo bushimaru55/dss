@@ -1,0 +1,18 @@
+# Local development: bind-mount backend for live edits
+services:
+  web:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    volumes:
+      - ./backend:/app
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+    command: >
+      sh -c "python manage.py collectstatic --noinput &&
+             gunicorn --bind 0.0.0.0:8000 --workers 2 config.wsgi:application"
+
+  worker:
+    volumes:
+      - ./backend:/app
+      - media_data:/app/media

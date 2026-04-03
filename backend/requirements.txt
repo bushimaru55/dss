@@ -1,0 +1,12 @@
+Django>=5.0,<6
+djangorestframework>=3.15,<4
+django-rq>=2.10,<3
+psycopg[binary]>=3.1,<4
+gunicorn>=22,<24
+openpyxl>=3.1,<4
+openai
+pytest
+pytest-django
+pandas>=2.2,<3
+pandera>=0.22,<1
+python-dateutil>=2.9,<3

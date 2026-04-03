@@ -14,12 +14,20 @@
 - [ローカル環境](environments/local.md)
 - [本番環境（ConoHa VPS）](environments/prod-conoha-vps.md)
 
+## 表インテリジェンス（仕様書群）
+- [TI 仕様索引（15本）](00_管理/INDEX-table-intelligence.md)
+- [仕様書作成計画](00_管理/仕様書作成計画.md)
+
 ## システム設計
 - [Data Solution Studio 概要](systems/architecture/data-solution-studio-overview.md)
 - [Docker Compose 構成](systems/architecture/docker-compose-architecture.md)
 - [Django app 構成](systems/architecture/django-app-structure.md)
 - [ストレージ戦略](systems/architecture/storage-strategy.md)
 - [ConoHa VPS 配置構成](systems/architecture/deployment-architecture-conoha-vps.md)
+- [前処理基盤（Excel/CSV）](systems/preprocessing-foundation-spec.md)
+- [エンドユーザーUI（MVP）](systems/enduser-ui-spec.md)
+- [Phase2 API 設計](systems/api-design-phase2.md)
+- [Phase2 タスクフロー](systems/task-flow-phase2.md)
 
 ## Runbooks
 - [初期セットアップ（local）](runbooks/initial-setup-local.md)
@@ -28,12 +36,17 @@
 - [migrate / collectstatic](runbooks/django-migrate-and-collectstatic.md)
 - [worker 運用](runbooks/worker-operations.md)
 - [Object Storage 設定](runbooks/object-storage-setup.md)
+- [前処理基盤（local）](runbooks/preprocessing-foundation-local-runbook.md)
+- [エンドユーザーUI（local）](runbooks/enduser-ui-local-runbook.md)
 
 ## Verification
 - [初期コンテナ build 結果](verification/initial-container-build-report.md)
 - [local 起動確認](verification/local-startup-verification.md)
 - [nginx / gunicorn 確認](verification/nginx-gunicorn-verification.md)
 - [PostgreSQL / Redis 確認](verification/postgres-redis-verification.md)
+- [前処理基盤確認](verification/preprocessing-foundation-verification.md)
+- [エンドユーザーUI確認](verification/enduser-ui-verification.md)
 
 ## Changes
 - [2026-03-27 初期基盤構築](changes/2026-03-27-initial-foundation.md)
+- [2026-03-27 前処理基盤](changes/2026-03-27-preprocessing-foundation.md)

@@ -1,0 +1,13 @@
+{% extends "enduser/base.html" %}
+{% block content %}
+<div class="card" style="max-width:420px;margin:30px auto">
+  <h2>エンドユーザーログイン</h2>
+  <p class="muted">管理画面とは別の利用者向け導線です。</p>
+  <form method="post">
+    {% csrf_token %}
+    <div style="margin-bottom:10px">{{ form.username.label_tag }}{{ form.username }}</div>
+    <div style="margin-bottom:10px">{{ form.password.label_tag }}{{ form.password }}</div>
+    <button class="btn" type="submit">ログイン</button>
+  </form>
+</div>
+{% endblock %}

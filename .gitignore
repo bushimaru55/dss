@@ -9,3 +9,18 @@
 
 # Editor
 .vscode/
+
+# Python / Django
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+*.egg
+backend/media/
+backend/staticfiles/
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+
+# Local env (see .env.example)
+.env

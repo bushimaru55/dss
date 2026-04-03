@@ -1,0 +1,15 @@
+{% extends "enduser/base.html" %}
+{% block content %}
+<div class="card" style="max-width:680px">
+  <h2>ステップ1：分析するファイルをステップ2へ進む（アップロード）</h2>
+  <p class="muted">CSV または XLSX を選び、ステップ2へ進む（アップロード）してください。
+  次に <strong>ステップ2：ファイル内容の確認</strong> へ進みます。</p>
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div style="margin-bottom:8px">{{ form.name.label_tag }}<br/>{{ form.name }}</div>
+    <div style="margin-bottom:8px">{{ form.workspace.label_tag }}<br/>{{ form.workspace }}</div>
+    <div style="margin-bottom:8px">{{ form.file.label_tag }}<br/>{{ form.file }}</div>
+    <button class="btn" type="submit">ステップ2へ進む（アップロード）</button>
+  </form>
+</div>
+{% endblock %}
