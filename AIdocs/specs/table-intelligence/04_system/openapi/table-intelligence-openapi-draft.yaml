@@ -1,0 +1,1011 @@
+# Table Intelligence API — OpenAPI 叩き台
+# -----------------------------------------------------------------------------
+# 正本: SPEC-TI-014（API 契約）, SPEC-TI-006（DTO / 列挙 / ref）
+# 位置づけ: 実装接続フェーズの初期ドラフト。未確定は description / TODO で明示。
+# last_updated: 2026-04-07
+# document_version: 0.1.0-draft
+# -----------------------------------------------------------------------------
+
+openapi: 3.1.0
+info:
+  title: Table Intelligence API
+  version: 0.1.0-draft
+  description: |
+    表解析パイプラインの **API 叩き台**（OpenAPI 3.1）。
+
+    **正本**
+    - 契約・振る舞い: [SPEC-TI-014](../SPEC-TI-014-api.md)
+    - DTO・列挙・識別子: [SPEC-TI-006](../../01_foundation/SPEC-TI-006-io-data.md)
+
+    **ID / ref（レイヤ差）**
+    - `evaluation_ref`（API・Job 応答）と DB 主キー `evaluation_id` は **同一キー空間**（015 §5.2）。
+    - `suggestion_run_ref`（API・Job 応答）と DB 主キー `suggestion_run_id` は **同一キー空間**。
+    - 人確認は **`session_id` のみ**を用いる（`review_session_id` は採用しない）。
+
+    **責務**
+    - `decision`: 002 Judgment（一次判定）。
+    - `decision_recommendation`: 011 の推奨（002 を上書きしない）。
+    - suppression の正本: 005。suggestion で suppression 適用済みを返す場合も **005 の状態を読んだ結果**である（本 API は窓口）。
+
+    TODO: HTTP ステータスと 012 `error_code` の完全対応、認証スキーム、ページネーション詳細は次版で確定。
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.example.com/v1
+    description: Draft base URL（実装で置換）
+
+tags:
+  - name: Jobs
+    description: 実行系。POST は `job_id` / ref を返し、GET で状態・確定 ID を参照（SPEC-TI-014 §4.2）。
+  - name: Tables
+    description: 観測対象テーブルと読取・判定成果物（001/002）。
+  - name: Datasets
+    description: 正規化成果（003）。`dataset_id` は 003 の主成果物 ID。
+  - name: Metadata
+    description: 分析メタ（004）。`metadata_id` は 004 の主成果物 ID。
+  - name: ReviewSessions
+    description: 人確認（005）。状態遷移の正本は 005。
+  - name: Evaluations
+    description: 信頼度評価（011）。`decision_recommendation` は本リソースのみ（002 `decision` と混同禁止）。
+  - name: Suggestions
+    description: 候補生成（013）。**主入力は `metadata_id`**。011/005 は読む側。
+
+paths:
+  /table-analysis/jobs:
+    post:
+      tags: [Jobs]
+      operationId: startAnalysisJob
+      summary: 表解析ジョブ開始
+      description: |
+        原本参照を受理し非同期実行。レスポンスは **受理と `job_id`** を主とし、成果物本体は GET で再取得（014）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartAnalysisJobRequest"
+      responses:
+        "202":
+          description: 受理。処理は非同期。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAcceptedResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /table-analysis/jobs/{job_id}:
+    get:
+      tags: [Jobs]
+      operationId: getAnalysisJob
+      summary: ジョブ状態取得
+      description: 確定済み `table_id` / ref の部分集合を返しうる。
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /table-analysis/jobs/{job_id}/rerun:
+    post:
+      tags: [Jobs]
+      operationId: rerunAnalysisJob
+      summary: 単一段階 rerun
+      description: |
+        001〜004 のいずれかから再実行。新 `job_id` ないし成果物世代が発生しうる（014 §12）。
+      parameters:
+        - $ref: "#/components/parameters/JobId"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RerunJobRequest"
+      responses:
+        "202":
+          description: 再実行受理
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAcceptedResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /tables/{table_id}:
+    get:
+      tags: [Tables]
+      operationId: getTableSummary
+      summary: テーブルサマリ取得
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableSummary"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /tables/{table_id}/read-artifact:
+    get:
+      tags: [Tables]
+      operationId: getTableReadArtifact
+      summary: TableReadArtifact 取得
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TableReadArtifact"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /tables/{table_id}/decision:
+    get:
+      tags: [Tables]
+      operationId: getJudgmentResult
+      summary: Judgment（decision）取得
+      description: 002 正本の `decision`。011 `decision_recommendation` は含めない。
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JudgmentResult"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /tables/{table_id}/artifacts:
+    get:
+      tags: [Tables]
+      operationId: listTableArtifacts
+      summary: 関連成果物一覧
+      parameters:
+        - $ref: "#/components/parameters/TableId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArtifactRefsList"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /datasets/{dataset_id}:
+    get:
+      tags: [Datasets]
+      operationId: getNormalizedDataset
+      summary: NormalizedDataset 取得
+      parameters:
+        - $ref: "#/components/parameters/DatasetId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NormalizedDataset"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /metadata/{metadata_id}:
+    get:
+      tags: [Metadata]
+      operationId: getAnalysisMetadata
+      summary: AnalysisMetadata 取得
+      parameters:
+        - $ref: "#/components/parameters/MetadataId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisMetadata"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /metadata/{metadata_id}/review-points:
+    get:
+      tags: [Metadata]
+      operationId: listReviewPoints
+      summary: review_points 取得
+      description: 004 正本の `review_points[]` の投影。
+      parameters:
+        - $ref: "#/components/parameters/MetadataId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [review_points]
+                properties:
+                  metadata_id:
+                    type: string
+                  review_points:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ReviewPoint"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /evaluations/{evaluation_ref}:
+    get:
+      tags: [Evaluations]
+      operationId: getConfidenceEvaluation
+      summary: ConfidenceEvaluation 取得
+      description: |
+        パスパラメータ名は `evaluation_ref`。006 上のフィールド名は `evaluation_id` と同一値。
+      parameters:
+        - $ref: "#/components/parameters/EvaluationRef"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfidenceEvaluation"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /review-sessions:
+    post:
+      tags: [ReviewSessions]
+      operationId: createReviewSession
+      summary: review session 作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateReviewSessionRequest"
+      responses:
+        "201":
+          description: 作成
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumanReviewSession"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /review-sessions/{session_id}:
+    get:
+      tags: [ReviewSessions]
+      operationId: getReviewSession
+      summary: review session 取得
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumanReviewSession"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /review-sessions/{session_id}/answers:
+    post:
+      tags: [ReviewSessions]
+      operationId: submitReviewAnswers
+      summary: answers 登録
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitReviewAnswersRequest"
+      responses:
+        "200":
+          description: 受理
+          content:
+            application/json:
+              schema:
+                type: object
+                description: TODO 014 次版で確定（answer 受理サマリ）
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /review-sessions/{session_id}/rerun:
+    post:
+      tags: [ReviewSessions]
+      operationId: rerunAfterReview
+      summary: review 後 rerun
+      description: 005 正本の遷移に従い再パイプラインを起動。
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobAcceptedResponse"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /review-sessions/{session_id}/suppression:
+    get:
+      tags: [ReviewSessions]
+      operationId: getSuppressionState
+      summary: suppression 結果参照
+      description: |
+        **suppression の正本は 005**。本レスポンスはその投影。suggestion で「抑制済み候補」を返す根拠も 005 に依存。
+      parameters:
+        - $ref: "#/components/parameters/SessionId"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuppressionStateResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /suggestion-runs:
+    post:
+      tags: [Suggestions]
+      operationId: startSuggestionRun
+      summary: suggestion run 開始
+      description: |
+        **主入力は `metadata_id`（必須寄り）**。013 は 004 を主入力とし、011/005 を読む側。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartSuggestionRunRequest"
+      responses:
+        "202":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggestion_run_ref]
+                properties:
+                  suggestion_run_ref:
+                    type: string
+                    description: 006 `SuggestionSet.suggestion_run_id` と同一キー空間
+                  job_id:
+                    type: string
+                    nullable: true
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /suggestion-runs/{suggestion_run_ref}:
+    get:
+      tags: [Suggestions]
+      operationId: getSuggestionSet
+      summary: SuggestionSet 取得
+      parameters:
+        - $ref: "#/components/parameters/SuggestionRunRef"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestionSet"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+  /suggestion-runs/{suggestion_run_ref}/candidates:
+    get:
+      tags: [Suggestions]
+      operationId: listSuggestionCandidates
+      summary: 候補一覧 / 条件付き取得
+      description: |
+        - `suppression=applied`: 005 の suppression を反映した結果であることを前提とする（クエリは実装で確定）。
+        - `include=recommendation`: 011 由来の `decision_recommendation` 等を同梱しうる（002 `decision` と混在させない）。
+      parameters:
+        - $ref: "#/components/parameters/SuggestionRunRef"
+        - name: suppression
+          in: query
+          schema:
+            type: string
+            enum: [applied, none]
+          description: TODO 014 次版で enum 確定
+        - name: include
+          in: query
+          schema:
+            type: string
+            enum: [recommendation]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [candidates]
+                properties:
+                  candidates:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/SuggestionCandidate"
+                  decision_recommendation:
+                    $ref: "#/components/schemas/DecisionRecommendation"
+                    description: include=recommendation 時のみ。011 正本。
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: stale reference 等（014 §13）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        default:
+          $ref: "#/components/responses/ErrorResponseDefault"
+
+components:
+  parameters:
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+    TableId:
+      name: table_id
+      in: path
+      required: true
+      schema:
+        type: string
+    DatasetId:
+      name: dataset_id
+      in: path
+      required: true
+      schema:
+        type: string
+    MetadataId:
+      name: metadata_id
+      in: path
+      required: true
+      schema:
+        type: string
+    SessionId:
+      name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: HumanReviewSession。`review_session_id` は使用しない。
+    EvaluationRef:
+      name: evaluation_ref
+      in: path
+      required: true
+      schema:
+        type: string
+      description: API 名。006 `evaluation_id` と同一値。
+    SuggestionRunRef:
+      name: suggestion_run_ref
+      in: path
+      required: true
+      schema:
+        type: string
+      description: API 名。006 `suggestion_run_id` と同一値。
+
+  responses:
+    BadRequest:
+      description: 入力検証エラー（012 と整合予定）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: リソース不明
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: 状態不整合・禁止遷移・stale reference 等（012 と整合予定）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ErrorResponseDefault:
+      description: エラー
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+
+  schemas:
+    ErrorResponse:
+      type: object
+      description: SPEC-TI-012 と整合するエラー表現（フィールド詳細は TODO）。
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    StartAnalysisJobRequest:
+      type: object
+      description: TODO 原本参照（source_id / document_id / upload）の形は 014 次版で確定。
+      properties:
+        source_id:
+          type: string
+          nullable: true
+        document_id:
+          type: string
+          nullable: true
+        workspace_id:
+          type: string
+          nullable: true
+        idempotency_key:
+          type: string
+          nullable: true
+
+    RerunJobRequest:
+      type: object
+      description: 再開段階の指定など。TODO 002〜004 の段階 enum は 014 次版。
+      properties:
+        from_stage:
+          type: string
+          description: 例 READ, JUDGE, NORMALIZE, META
+        reason:
+          type: string
+
+    JobAcceptedResponse:
+      type: object
+      required: [job_id, status]
+      properties:
+        job_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        table_id:
+          type: string
+          nullable: true
+
+    JobDetail:
+      allOf:
+        - $ref: "#/components/schemas/JobSummary"
+        - type: object
+          properties:
+            error_code:
+              type: string
+              nullable: true
+            evaluation_ref:
+              type: string
+              nullable: true
+              description: 付与時。011 成果物への参照。
+            suggestion_run_ref:
+              type: string
+              nullable: true
+              description: 付与時。013 成果物への参照。
+
+    JobSummary:
+      type: object
+      required: [job_id, status, kind]
+      properties:
+        job_id:
+          type: string
+        status:
+          $ref: "#/components/schemas/JobStatus"
+        kind:
+          $ref: "#/components/schemas/JobKind"
+        table_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    JobStatus:
+      type: string
+      enum: [PENDING, RUNNING, SUCCEEDED, FAILED]
+      description: 006 JobRun.status
+
+    JobKind:
+      type: string
+      enum: [READ, JUDGE, NORMALIZE, META, SUGGEST]
+      description: 006 JobRun.kind（拡張可・TODO）
+
+    ArtifactRefs:
+      type: object
+      description: 主要 ID の束（014）。
+      properties:
+        table_id:
+          type: string
+        dataset_id:
+          type: string
+          nullable: true
+        metadata_id:
+          type: string
+          nullable: true
+        session_id:
+          type: string
+          nullable: true
+        evaluation_ref:
+          type: string
+          nullable: true
+        suggestion_run_ref:
+          type: string
+          nullable: true
+
+    ArtifactRefsList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ArtifactRefs"
+
+    TableSummary:
+      type: object
+      required: [table_id]
+      properties:
+        table_id:
+          type: string
+        refs:
+          $ref: "#/components/schemas/ArtifactRefs"
+
+    TableReadArtifact:
+      type: object
+      description: 006 TableReadArtifact。cells 等は TODO 深い nest は object。
+      required: [artifact_id, table_id, cells, merges, parse_warnings]
+      properties:
+        artifact_id:
+          type: string
+        table_id:
+          type: string
+        cells:
+          type: object
+          additionalProperties: true
+        merges:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        parse_warnings:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    JudgmentResult:
+      type: object
+      description: 006 JudgmentResult。decision は 002。decision_recommendation は含めない。
+      required: [judgment_id, table_id, decision, taxonomy_code, evidence]
+      properties:
+        judgment_id:
+          type: string
+        table_id:
+          type: string
+        decision:
+          $ref: "#/components/schemas/DecisionJudgment"
+        taxonomy_code:
+          type: string
+        evidence:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            description: 006 evidence[] 要素（Phase4 で厳密化）
+
+    DecisionJudgment:
+      type: string
+      enum: [AUTO_ACCEPT, NEEDS_REVIEW, REJECT]
+      description: 002 一次判定（006 §6 decision Judgment）
+
+    DecisionRecommendation:
+      type: string
+      enum: [AUTO_ACCEPT, NEEDS_REVIEW, REJECT]
+      description: 011 の推奨語彙。002 decision と別セマンティクス（006 §6）。
+
+    NormalizedDataset:
+      type: object
+      description: 006 NormalizedDataset
+      required: [dataset_id, table_id, rows, trace_map]
+      properties:
+        dataset_id:
+          type: string
+        table_id:
+          type: string
+        rows:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        trace_map:
+          type: object
+          additionalProperties: true
+        normalization_status:
+          type: string
+          description: 006 §6 enum。TODO 完全列挙は 006 正本参照。
+
+    AnalysisMetadata:
+      type: object
+      description: 006 AnalysisMetadata
+      required: [metadata_id, dataset_id, grain, dimensions, measures]
+      properties:
+        metadata_id:
+          type: string
+        dataset_id:
+          type: string
+        grain:
+          type: string
+        dimensions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        measures:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        review_points:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewPoint"
+          description: 任意生成タイミングは 004 正本
+
+    ReviewPoint:
+      type: object
+      description: 006 review_points[] 要素（014/015 と整合）
+      properties:
+        point_id:
+          type: string
+        category:
+          type: string
+        priority:
+          oneOf:
+            - type: integer
+            - type: string
+        severity:
+          type: string
+        affected_fields:
+          type: array
+          items:
+            type: string
+        trace_refs:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        suggested_resolution_type:
+          type: string
+
+    HumanReviewSession:
+      type: object
+      description: 006 HumanReviewSession
+      required: [session_id, table_id, state, pending_questions]
+      properties:
+        session_id:
+          type: string
+        table_id:
+          type: string
+        state:
+          $ref: "#/components/schemas/HumanReviewSessionState"
+        pending_questions:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewAnswer"
+          description: 取得 API では省略または別リソースでも可（TODO）
+
+    HumanReviewSessionState:
+      type: string
+      enum:
+        - OPEN
+        - IN_PROGRESS
+        - WAITING_RERUN
+        - PARTIALLY_RESOLVED
+        - RESOLVED
+        - CLOSED_UNRESOLVED
+        - ESCALATED
+      description: 006 §6 草案。禁止遷移は 005 正本。
+
+    ReviewAnswer:
+      type: object
+      properties:
+        answer_id:
+          type: string
+        point_id:
+          type: string
+        answer_type:
+          type: string
+        selected_option:
+          type: string
+          nullable: true
+        free_text:
+          type: string
+          nullable: true
+        region_ref:
+          type: object
+          additionalProperties: true
+          nullable: true
+        answered_by:
+          type: string
+        answered_at:
+          type: string
+          format: date-time
+
+    CreateReviewSessionRequest:
+      type: object
+      required: [metadata_id]
+      properties:
+        metadata_id:
+          type: string
+        table_id:
+          type: string
+          nullable: true
+
+    SubmitReviewAnswersRequest:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReviewAnswer"
+
+    SuppressionStateResponse:
+      type: object
+      description: 005 suppression の投影。詳細は TODO。
+      properties:
+        session_id:
+          type: string
+        records:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    StartSuggestionRunRequest:
+      type: object
+      required: [metadata_id]
+      properties:
+        metadata_id:
+          type: string
+          description: 013 主入力（004）
+        dataset_id:
+          type: string
+          nullable: true
+          description: 補助参照
+        evaluation_ref:
+          type: string
+          nullable: true
+        session_id:
+          type: string
+          nullable: true
+
+    ConfidenceEvaluation:
+      type: object
+      description: 006 ConfidenceEvaluation。decision_recommendation は 011 のみ。
+      required: [evaluation_id, table_id, scores, decision_recommendation, explanation]
+      properties:
+        evaluation_id:
+          type: string
+          description: API パスでは `evaluation_ref` として同値を渡す
+        table_id:
+          type: string
+        scores:
+          type: object
+          additionalProperties: true
+          description: 011 正本。内部キーは TODO
+        decision_recommendation:
+          $ref: "#/components/schemas/DecisionRecommendation"
+        explanation:
+          type: object
+          additionalProperties: true
+        feature_snapshot_hash:
+          type: string
+          nullable: true
+
+    SuggestionSet:
+      type: object
+      description: 006 SuggestionSet
+      required: [suggestion_run_id, table_id, analysis_candidates, suppression_applied]
+      properties:
+        suggestion_run_id:
+          type: string
+          description: API では `suggestion_run_ref` パスと同値
+        table_id:
+          type: string
+        analysis_candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/SuggestionCandidate"
+        suppression_applied:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    SuggestionCandidate:
+      type: object
+      description: 013 正本。decision はここに含めない（002 は JudgmentResult 側）。
+      properties:
+        candidate_id:
+          type: string
+        category:
+          type: string
+        priority:
+          oneOf:
+            - type: integer
+            - type: string
+        confidence:
+          nullable: true
+        readiness:
+          type: string
+        required_fields:
+          type: array
+          items:
+            type: string
+        optional_fields:
+          type: array
+          items:
+            type: string
+        evidence:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        risk_notes:
+          type: array
+          items:
+            type: string
+        followup_questions:
+          type: array
+          items:
+            type: string
