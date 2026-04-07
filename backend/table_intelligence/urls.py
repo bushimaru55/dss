@@ -1,0 +1,107 @@
+"""
+OpenAPI 叩き台: config で ``api/v1/`` にマウント済み。
+
+例: POST /api/v1/table-analysis/jobs/
+"""
+
+from django.urls import path
+
+from table_intelligence import views
+
+urlpatterns = [
+    path(
+        "table-analysis/jobs/",
+        views.TableAnalysisJobCreateView.as_view(),
+        name="ti-table-analysis-job-create",
+    ),
+    path(
+        "table-analysis/jobs/<uuid:job_id>/",
+        views.TableAnalysisJobDetailView.as_view(),
+        name="ti-table-analysis-job-detail",
+    ),
+    path(
+        "table-analysis/jobs/<uuid:job_id>/rerun/",
+        views.TableAnalysisJobRerunView.as_view(),
+        name="ti-table-analysis-job-rerun",
+    ),
+    path(
+        "datasets/<uuid:dataset_id>/",
+        views.NormalizedDatasetDetailView.as_view(),
+        name="ti-dataset-detail",
+    ),
+    path(
+        "tables/<uuid:table_id>/read-artifact/",
+        views.TableReadArtifactView.as_view(),
+        name="ti-table-read-artifact",
+    ),
+    path(
+        "tables/<uuid:table_id>/decision/",
+        views.TableJudgmentDetailView.as_view(),
+        name="ti-table-decision",
+    ),
+    path(
+        "tables/<uuid:table_id>/artifacts/",
+        views.TableArtifactRefsListView.as_view(),
+        name="ti-table-artifacts",
+    ),
+    path(
+        "tables/<uuid:table_id>/",
+        views.TableScopeSummaryView.as_view(),
+        name="ti-table-summary",
+    ),
+    path(
+        "metadata/<uuid:metadata_id>/review-points/",
+        views.AnalysisMetadataReviewPointsView.as_view(),
+        name="ti-metadata-review-points",
+    ),
+    path(
+        "metadata/<uuid:metadata_id>/",
+        views.AnalysisMetadataDetailView.as_view(),
+        name="ti-metadata-detail",
+    ),
+    path(
+        "evaluations/<uuid:evaluation_ref>/",
+        views.ConfidenceEvaluationDetailView.as_view(),
+        name="ti-evaluation-detail",
+    ),
+    path(
+        "review-sessions/",
+        views.ReviewSessionCreateView.as_view(),
+        name="ti-review-session-create",
+    ),
+    path(
+        "review-sessions/<uuid:session_id>/",
+        views.ReviewSessionDetailView.as_view(),
+        name="ti-review-session-detail",
+    ),
+    path(
+        "review-sessions/<uuid:session_id>/rerun/",
+        views.ReviewSessionRerunView.as_view(),
+        name="ti-review-session-rerun",
+    ),
+    path(
+        "review-sessions/<uuid:session_id>/answers/",
+        views.ReviewSessionAnswersView.as_view(),
+        name="ti-review-session-answers",
+    ),
+    path(
+        "review-sessions/<uuid:session_id>/suppression/",
+        views.ReviewSessionSuppressionView.as_view(),
+        name="ti-review-session-suppression",
+    ),
+    path(
+        "suggestion-runs/",
+        views.SuggestionRunStartView.as_view(),
+        name="ti-suggestion-run-start",
+    ),
+    path(
+        "suggestion-runs/<uuid:suggestion_run_ref>/candidates/",
+        views.SuggestionCandidatesListView.as_view(),
+        name="ti-suggestion-candidates",
+    ),
+    path(
+        "suggestion-runs/<uuid:suggestion_run_ref>/",
+        views.SuggestionSetDetailView.as_view(),
+        name="ti-suggestion-set-detail",
+    ),
+]

@@ -16,6 +16,7 @@
 
 ## 表インテリジェンス（仕様書群）
 - [TI 仕様索引（15本）](00_管理/INDEX-table-intelligence.md)
+- [TI API 利用者向けエラー一覧](specs/table-intelligence/04_system/GUIDE-TI-table-intelligence-api-errors.md)（`/api/v1/` の HTTP ステータス早見）
 - [仕様書作成計画](00_管理/仕様書作成計画.md)
 
 ## システム設計

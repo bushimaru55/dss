@@ -2,14 +2,14 @@
 # -----------------------------------------------------------------------------
 # 正本: SPEC-TI-014（API 契約）, SPEC-TI-006（DTO / 列挙 / ref）
 # 位置づけ: 実装接続フェーズの初期ドラフト。未確定は description / TODO で明示。
-# last_updated: 2026-04-07
-# document_version: 0.1.0-draft
+# last_updated: 2026-04-03 (0.1.8 stale metadata 409)
+# document_version: 0.1.8-draft
 # -----------------------------------------------------------------------------
 
 openapi: 3.1.0
 info:
   title: Table Intelligence API
-  version: 0.1.0-draft
+  version: 0.1.8-draft
   description: |
     表解析パイプラインの **API 叩き台**（OpenAPI 3.1）。
 
@@ -27,13 +27,29 @@ info:
     - `decision_recommendation`: 011 の推奨（002 を上書きしない）。
     - suppression の正本: 005。suggestion で suppression 適用済みを返す場合も **005 の状態を読んだ結果**である（本 API は窓口）。
 
-    TODO: HTTP ステータスと 012 `error_code` の完全対応、認証スキーム、ページネーション詳細は次版で確定。
+    TODO: 認証スキーム詳細、ページネーション、012 の細粒度 `error_code` マトリクスは次版で確定。
+
+    **MVP 実装整合（0.1.1）**
+    - Django バックエンド実装に合わせ、Jobs の受理形・`TiMvpJobSummary` / `TiMvpJobDetail`、suppression GET の配列レスポンス、rerun の **201**、冪等 **200** をドラフトに反映した。
+    - 006 完全準拠の `JobKind` / `HumanReviewSession.table_id` 等は **Phase 4** で本スキーマと実装の双方を厳密化する。
+    - **クライアント向け**: 何に依存してよいか／Phase 4 で何が変わるかは **SPEC-TI-014 §18** を正とする。
+    - **P4-2（0.1.2）**: `GET /datasets/{id}`, `GET /metadata/{id}`, `GET /evaluations/{ref}`, `GET /review-sessions/{id}` および session **POST 201** のレスポンスを **`TiMvp*` schema** に明示紐付け。006 理想形（`NormalizedDataset` 等）は **Phase 4 目標**として components に残す。
+    - **P4-1（0.1.3）**: `/api/v1/*` のエラーレスポンスを **`error_code` + `detail`（+ 任意 `errors`）** のエンベロープに統一（DRF 既定の `detail` 単体をラップ）。`request_id` / `message` は後続。他プレフィックスの `/api/*` は変更なし。
+    - **Operation エラー明示（0.1.4）**: 主要 path に **401 / 400 / 404** を OpenAPI 上で列挙。**workspace 越境・存在しない ID は 404 マスク**（014 §14.3）。**403**（`TI_PERMISSION_DENIED`）は DRF 設定により稀にありうるが、MVP 既定は未認証で **401** 寄りのため **全 operation には付けず** `components.responses.Forbidden` のみ維持。**409** の path 割当は **0.1.6 / §13.1** に従う。
+    - **Review answers request（0.1.5）**: `POST .../review-sessions/{session_id}/answers` の **事実契約**は **`TiMvpSubmitReviewAnswersRequest`**（`answers[]`: `question_key` + `answer_value` 任意 JSON、任意 `mark_resolved` / `resolution_grade`）。無印 `SubmitReviewAnswersRequest` は **006 Phase 4 向けドラフト**（`deprecated`）に限定。
+    - **409 マトリクス（0.1.6）**: **§13.1（SPEC-TI-014）** に合わせ、`GET .../candidates` から **409 を削除**（読取は 200/404）。**`POST /suggestion-runs`** に **stale `metadata_id`（lineage）用の 409 将来枠**を追加。`POST .../answers`・`POST .../review-sessions/.../rerun` の 409 は **将来枠のまま**（MVP 未返却）。
+    - **401 列挙（0.1.7）**: **`GET /tables/*`** および **`GET /metadata/{id}/review-points`** に **`Unauthorized`** を追加。[GUIDE-TI-table-intelligence-api-errors.md](../GUIDE-TI-table-intelligence-api-errors.md) および **DRF `IsAuthenticated`** 前提と一致。
+    - **stale metadata 409（0.1.8）**: **`POST /suggestion-runs`** のみ、`artifact_relation` に **旧→新 `analysis_metadata` の `TI_JOB_RERUN_SUPERSEDES` / `TI_REVIEW_RERUN_SUPERSEDES`** があるとき **409** + `TI_CONFLICT`（014 §13.1）。
+
   license:
     name: Proprietary
 
 servers:
   - url: https://api.example.com/v1
     description: Draft base URL（実装で置換）
+
+security:
+  - tokenAuth: []
 
 tags:
   - name: Jobs
@@ -58,7 +74,20 @@ paths:
       operationId: startAnalysisJob
       summary: 表解析ジョブ開始
       description: |
-        原本参照を受理し非同期実行。レスポンスは **受理と `job_id`** を主とし、成果物本体は GET で再取得（014）。
+        原本参照を受理し非同期実行。レスポンスは **受理と `job_id`** を主とし、成果物本体は GET で再取得（014 §4.2）。
+
+        **冪等**: ヘッダ `Idempotency-Key`（最大 128 文字）が同一 workspace で再送された場合、**新規行を増やさず**既存ジョブを返す。HTTP は **200**（MVP 実装）。
+        新規受理時は **202**。
+
+        **エラー**: 未知・無権限の `workspace_id` は **404 マスク**（越境判別不可）。
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+          description: 同一意味の POST の冪等キー（014 §4.5）。workspace スコープと組み合わせて一意。
       requestBody:
         required: true
         content:
@@ -66,14 +95,28 @@ paths:
             schema:
               $ref: "#/components/schemas/StartAnalysisJobRequest"
       responses:
-        "202":
-          description: 受理。処理は非同期。
+        "200":
+          description: 冪等リプレイ。既存 `job_id` を返し、重複投入しない（MVP）。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/JobAcceptedResponse"
+                $ref: "#/components/schemas/TiMvpJobSummary"
+        "202":
+          description: 新規ジョブを受理。処理は非同期（テスト用設定ではインライン完了しうる）。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TiMvpJobSummary"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: 未知の `workspace_id`（テナント分離・列挙攻撃対策で 404 マスクしうる。014 §14.3）。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         default:
           $ref: "#/components/responses/ErrorResponseDefault"
 
@@ -82,16 +125,20 @@ paths:
       tags: [Jobs]
       operationId: getAnalysisJob
       summary: ジョブ状態取得
-      description: 確定済み `table_id` / ref の部分集合を返しうる。
+      description: |
+        確定済み `table_id` / ref の部分集合を返しうる。
+        存在しない `job_id` および **他 workspace のジョブ**は **404 マスク**（同一応答）。
       parameters:
         - $ref: "#/components/parameters/JobId"
       responses:
         "200":
-          description: OK
+          description: OK（MVP は `TiMvpJobDetail`。確定 ref は `artifact_refs` 束に集約）。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/JobDetail"
+                $ref: "#/components/schemas/TiMvpJobDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -104,6 +151,7 @@ paths:
       summary: 単一段階 rerun
       description: |
         001〜004 のいずれかから再実行。新 `job_id` ないし成果物世代が発生しうる（014 §12）。
+        元 `job_id` が存在しない・越境の場合は **404**。**409**（競合・stale）は将来 014 §12 / §13 で拡張しうるが **MVP では主に未使用**。
       parameters:
         - $ref: "#/components/parameters/JobId"
       requestBody:
@@ -112,14 +160,19 @@ paths:
             schema:
               $ref: "#/components/schemas/RerunJobRequest"
       responses:
-        "202":
-          description: 再実行受理
+        "201":
+          description: |
+            新 `job_id` のジョブ行を **Created** として返す（MVP・REST 慣習）。パイプライン非同期投入は実装フラグに依存。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/JobAcceptedResponse"
-        "409":
-          $ref: "#/components/responses/Conflict"
+                $ref: "#/components/schemas/TiMvpJobSummary"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         default:
           $ref: "#/components/responses/ErrorResponseDefault"
 
@@ -136,6 +189,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TableSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -146,6 +201,11 @@ paths:
       tags: [Tables]
       operationId: getTableReadArtifact
       summary: TableReadArtifact 取得
+      description: |
+        006 正本の `TableReadArtifact`（001 観測の器）。
+        **MVP 実装**: 永続化テーブル `table_read_artifact` の **`is_latest` 行**から返す。
+        行が無い（未 materialize 等）は **404**（越境・不存在は §14.3 と同様に 404 マスク）。
+        `cells` は **稀疏**で 001 暫定キー `R{row}C{col}` に寄せたスタブから始まり、本格読取で置換される。
       parameters:
         - $ref: "#/components/parameters/TableId"
       responses:
@@ -154,6 +214,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TableReadArtifact"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -164,7 +226,11 @@ paths:
       tags: [Tables]
       operationId: getJudgmentResult
       summary: Judgment（decision）取得
-      description: 002 正本の `decision`。011 `decision_recommendation` は含めない。
+      description: |
+        002 正本の `decision`。011 `decision_recommendation` は含めない。
+        **MVP 実装**: 永続化テーブル `judgment_result` の **`is_latest` 行**から返す。
+        行が無い（未 materialize 等）は **404**（越境・不存在は §14.3 と同様に 404 マスク）。
+        `taxonomy_code` は未確定時 **`TI_TABLE_UNKNOWN`** を用い、空文字は避ける。
       parameters:
         - $ref: "#/components/parameters/TableId"
       responses:
@@ -173,6 +239,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/JudgmentResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -191,6 +259,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ArtifactRefsList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         default:
           $ref: "#/components/responses/ErrorResponseDefault"
 
@@ -198,7 +268,10 @@ paths:
     get:
       tags: [Datasets]
       operationId: getNormalizedDataset
-      summary: NormalizedDataset 取得
+      summary: NormalizedDataset 取得（MVP 事実形）
+      description: |
+        **実装契約（0.1.2）**: レスポンスは `TiMvpNormalizedDataset`。
+        `NormalizedDataset`（006 理想形・トップレベル `rows` / `trace_map`）は Phase 4 で **additive** 導入予定。現行は `dataset_payload` に集約。
       parameters:
         - $ref: "#/components/parameters/DatasetId"
       responses:
@@ -206,7 +279,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NormalizedDataset"
+                $ref: "#/components/schemas/TiMvpNormalizedDataset"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -216,7 +291,10 @@ paths:
     get:
       tags: [Metadata]
       operationId: getAnalysisMetadata
-      summary: AnalysisMetadata 取得
+      summary: AnalysisMetadata 取得（MVP 事実形）
+      description: |
+        **実装契約（0.1.2）**: レスポンスは `TiMvpAnalysisMetadata`。
+        `AnalysisMetadata`（006 理想形・例: `grain` 必須）は Phase 4 目標。現行は `dimensions` / `measures` / `time_axis` / `decision` 等の MVP 投影。
       parameters:
         - $ref: "#/components/parameters/MetadataId"
       responses:
@@ -224,7 +302,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AnalysisMetadata"
+                $ref: "#/components/schemas/TiMvpAnalysisMetadata"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -252,6 +332,8 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/ReviewPoint"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -261,9 +343,11 @@ paths:
     get:
       tags: [Evaluations]
       operationId: getConfidenceEvaluation
-      summary: ConfidenceEvaluation 取得
+      summary: ConfidenceEvaluation 取得（MVP 事実形）
       description: |
-        パスパラメータ名は `evaluation_ref`。006 上のフィールド名は `evaluation_id` と同一値。
+        パスパラメータ名は `evaluation_ref`。DB PK `evaluation_id` と同一値。
+        **実装契約（0.1.2）**: レスポンスは `TiMvpConfidenceEvaluation`。
+        `ConfidenceEvaluation`（006 理想形・`scores` / `explanation` / `table_id`）は Phase 4 目標。
       parameters:
         - $ref: "#/components/parameters/EvaluationRef"
       responses:
@@ -271,7 +355,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ConfidenceEvaluation"
+                $ref: "#/components/schemas/TiMvpConfidenceEvaluation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -282,6 +368,8 @@ paths:
       tags: [ReviewSessions]
       operationId: createReviewSession
       summary: review session 作成
+      description: |
+        参照する `metadata_id` 等が存在しない・越境の場合は **404 マスク**（014 §14.3）。
       requestBody:
         required: true
         content:
@@ -290,13 +378,17 @@ paths:
               $ref: "#/components/schemas/CreateReviewSessionRequest"
       responses:
         "201":
-          description: 作成
+          description: 作成（MVP 事実形 `TiMvpHumanReviewSession`）
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HumanReviewSession"
+                $ref: "#/components/schemas/TiMvpHumanReviewSession"
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         default:
           $ref: "#/components/responses/ErrorResponseDefault"
 
@@ -304,7 +396,10 @@ paths:
     get:
       tags: [ReviewSessions]
       operationId: getReviewSession
-      summary: review session 取得
+      summary: review session 取得（MVP 事実形）
+      description: |
+        **実装契約（0.1.2）**: レスポンスは `TiMvpHumanReviewSession`。
+        `HumanReviewSession`（006 理想形・`table_id` / `pending_questions`）は Phase 4 目標。
       parameters:
         - $ref: "#/components/parameters/SessionId"
       responses:
@@ -312,7 +407,9 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HumanReviewSession"
+                $ref: "#/components/schemas/TiMvpHumanReviewSession"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -323,6 +420,11 @@ paths:
       tags: [ReviewSessions]
       operationId: submitReviewAnswers
       summary: answers 登録
+      description: |
+        **005 MVP 事実形**（Django `SubmitReviewAnswersRequestSerializer`）。**Request**: `TiMvpSubmitReviewAnswersRequest`。
+        各回答は **`question_key` + `answer_value`（任意 JSON）** が契約。006 の `point_id` / `client_nonce` / `ReviewAnswer` 完全形とは **未整合**（Phase 4 **additive**）。
+        任意 **`mark_resolved`**: `true` のとき session を **RESOLVED** に。**`resolution_grade`**: 任意文字列（最大 64、空・null 可）を session に保存。
+        存在しない `session_id`・越境は **404 マスク**。**409** は stale / 二重送信等の **将来枠**（MVP では多く未使用）。
       parameters:
         - $ref: "#/components/parameters/SessionId"
       requestBody:
@@ -330,17 +432,27 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SubmitReviewAnswersRequest"
+              $ref: "#/components/schemas/TiMvpSubmitReviewAnswersRequest"
       responses:
         "200":
-          description: 受理
+          description: |
+            **HTTP 200**（実装事実）。`session`（`TiMvpHumanReviewSession`）と `answers`（**本リクエストで作成した行**の `TiMvpHumanReviewAnswer[]`）。
           content:
             application/json:
               schema:
-                type: object
-                description: TODO 014 次版で確定（answer 受理サマリ）
+                $ref: "#/components/schemas/TiMvpSubmitReviewAnswersResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: stale / 競合（将来。014 §13）。MVP では主に未使用。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         default:
           $ref: "#/components/responses/ErrorResponseDefault"
 
@@ -349,17 +461,28 @@ paths:
       tags: [ReviewSessions]
       operationId: rerunAfterReview
       summary: review 後 rerun
-      description: 005 正本の遷移に従い再パイプラインを起動。
+      description: |
+        005 正本の遷移に従い再パイプラインを起動。
+        存在しない `session_id`・越境は **404 マスク**。**409** は将来の状態競合用（MVP では主に未使用）。
       parameters:
         - $ref: "#/components/parameters/SessionId"
       responses:
         "202":
+          description: 上流再実行ジョブを受理（MVP は `TiMvpJobSummary`）。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/JobAcceptedResponse"
+                $ref: "#/components/schemas/TiMvpJobSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "409":
-          $ref: "#/components/responses/Conflict"
+          description: 状態競合（将来）。MVP では主に未使用。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         default:
           $ref: "#/components/responses/ErrorResponseDefault"
 
@@ -374,10 +497,17 @@ paths:
         - $ref: "#/components/parameters/SessionId"
       responses:
         "200":
+          description: |
+            **MVP 実装**: `SuppressionRecord` の **配列**を直接返す（ラッパオブジェクトではない）。
+            将来 `SuppressionStateResponse`（`session_id` + `records`）へ正規化しうる。
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuppressionStateResponse"
+                type: array
+                items:
+                  $ref: "#/components/schemas/TiMvpSuppressionRecord"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -390,6 +520,8 @@ paths:
       summary: suggestion run 開始
       description: |
         **主入力は `metadata_id`（必須寄り）**。013 は 004 を主入力とし、011/005 を読む側。
+        参照 `metadata_id` が存在しない・越境の場合は **404 マスク**。
+        **409**: 当該 `metadata_id` が **既に superseded**（`artifact_relation` に **旧 `analysis_metadata` → 新 `analysis_metadata`** の `TI_JOB_RERUN_SUPERSEDES` または `TI_REVIEW_RERUN_SUPERSEDES` がある）。**最新の metadata_id** で再試行（014 §13.1）。**`is_latest` 列は不要**（edge 有無で判定）。
       requestBody:
         required: true
         content:
@@ -412,6 +544,17 @@ paths:
                     nullable: true
         "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            **stale / superseded metadata**: `artifact_relation` に当該 ID が **from** 側の metadata SUPERSEDES edge がある。`error_code` は **`TI_CONFLICT`**。本文の `detail` に再取得のヒント。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         default:
           $ref: "#/components/responses/ErrorResponseDefault"
 
@@ -420,6 +563,8 @@ paths:
       tags: [Suggestions]
       operationId: getSuggestionSet
       summary: SuggestionSet 取得
+      description: |
+        存在しない ref・越境は **404 マスク**。
       parameters:
         - $ref: "#/components/parameters/SuggestionRunRef"
       responses:
@@ -428,6 +573,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SuggestionSet"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         default:
@@ -441,6 +588,8 @@ paths:
       description: |
         - `suppression=applied`: 005 の suppression を反映した結果であることを前提とする（クエリは実装で確定）。
         - `include=recommendation`: 011 由来の `decision_recommendation` 等を同梱しうる（002 `decision` と混在させない）。
+        - 存在しない ref・越境は **404 マスク**。
+        - **409 は付けない**（読取は成功時 **200** のみ。stale は **`POST /suggestion-runs`** 側で検知—014 §13.1）。
       parameters:
         - $ref: "#/components/parameters/SuggestionRunRef"
         - name: suppression
@@ -469,18 +618,22 @@ paths:
                   decision_recommendation:
                     $ref: "#/components/schemas/DecisionRecommendation"
                     description: include=recommendation 時のみ。011 正本。
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
-        "409":
-          description: stale reference 等（014 §13）
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         default:
           $ref: "#/components/responses/ErrorResponseDefault"
 
 components:
+  securitySchemes:
+    tokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        MVP 既定は DRF **Token** 認証（`Authorization: Token <key>`）。Session 等は実装・環境により異なりうる。
+
   parameters:
     JobId:
       name: job_id
@@ -530,25 +683,55 @@ components:
 
   responses:
     BadRequest:
-      description: 入力検証エラー（012 と整合予定）
+      description: |
+        入力検証エラー。`/api/v1/*` では `error_code` は多くの場合 **`TI_VALIDATION_ERROR`**（フィールドエラーは `errors`）。
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            validation:
+              summary: フィールド検証
+              value:
+                error_code: TI_VALIDATION_ERROR
+                detail: Validation failed.
+                errors:
+                  workspace_id:
+                    - This field is required.
     NotFound:
-      description: リソース不明
+      description: |
+        リソース不明または **workspace 越境の 404 マスク**（014 §14.3）。`error_code` は **`TI_NOT_FOUND`**。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          examples:
+            notFound:
+              value:
+                error_code: TI_NOT_FOUND
+                detail: Not found.
+    Unauthorized:
+      description: |
+        未認証。`error_code` は **`TI_AUTHENTICATION_REQUIRED`**（DRF 設定により 401）。
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: |
+        認可失敗。`error_code` は **`TI_PERMISSION_DENIED`**（DRF により 403 の場合あり）。
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
     Conflict:
-      description: 状態不整合・禁止遷移・stale reference 等（012 と整合予定）
+      description: 状態不整合・禁止遷移・stale reference 等。`error_code` は **`TI_CONFLICT`** 等（次版で細分化）。
       content:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
     ErrorResponseDefault:
-      description: エラー
+      description: その他エラー。`error_code` は **`TI_ERROR`** 等。
       content:
         application/json:
           schema:
@@ -557,56 +740,325 @@ components:
   schemas:
     ErrorResponse:
       type: object
-      description: SPEC-TI-012 と整合するエラー表現（フィールド詳細は TODO）。
+      description: |
+        **table_intelligence（`/api/v1/*`）** のエラー **事実契約**（P4-1 / SPEC-TI-012 最小寄せ）。
+        DRF 既定の本文を **ラップ**し、**`detail` を維持**しつつ **`error_code` を必須**とする。Phase 4 で `message` / `details` / `request_id` を **additive** 拡張しうる。
+        **互換**: 既存クライアントは引き続き `detail` を読める。`error_code` で分岐可能。
+      required: [error_code, detail]
       properties:
         error_code:
           type: string
+          description: |
+            実装が付与する安定キー（`TI_` 接頭辞）。代表: `TI_NOT_FOUND`, `TI_VALIDATION_ERROR`,
+            `TI_BAD_REQUEST`, `TI_AUTHENTICATION_REQUIRED`, `TI_PERMISSION_DENIED`, `TI_CONFLICT`, `TI_ERROR`
+        detail:
+          description: 人向け要約または DRF 由来の `detail`（文字列・配列・オブジェクトのいずれもありうる）
+          oneOf:
+            - type: string
+            - type: object
+            - type: array
+        errors:
+          type: object
+          additionalProperties: true
+          description: |
+            主に HTTP 400 のフィールド検証。キーはフィールド名、値はメッセージの配列（DRF 慣習）。
+            `detail` のみで足りる場合は省略。
         message:
           type: string
+          description: 012 拡張・英語要約用（省略可。後続 Phase 4）
         details:
           type: object
           additionalProperties: true
+          description: 012 構造化補足（省略可。後続 Phase 4）
 
     StartAnalysisJobRequest:
       type: object
-      description: TODO 原本参照（source_id / document_id / upload）の形は 014 次版で確定。
+      description: |
+        **MVP 実装**は `workspace_id` 必須、`source_type` / `source_ref` / `request_payload` 任意。
+        OpenAPI 上の `source_id` / `document_id` は 006・014 次版向け; 実装では `source_ref` 等に寄せうる。
+      required: [workspace_id]
       properties:
+        workspace_id:
+          type: string
+        source_type:
+          type: string
+          description: 原本種別（実装 MVP の文字列ラベル）
+        source_ref:
+          type: string
+          description: 原本参照（URI 等）
+        request_payload:
+          type: object
+          additionalProperties: true
+          description: 任意 JSON。rerun lineage や `mvp_pipeline` スナップショットが入りうる（015 `analysis_job` JSON 候補と整合）。
         source_id:
           type: string
           nullable: true
+          description: 006 向け予約（MVP 実装未使用の場合あり）
         document_id:
           type: string
           nullable: true
-        workspace_id:
-          type: string
-          nullable: true
+          description: 006 向け予約（MVP 実装未使用の場合あり）
         idempotency_key:
           type: string
           nullable: true
+          deprecated: true
+          description: ボディでの冪等キー指定は **非推奨**。ヘッダ `Idempotency-Key` を正とする（MVP）。
 
     RerunJobRequest:
       type: object
-      description: 再開段階の指定など。TODO 002〜004 の段階 enum は 014 次版。
+      description: |
+        MVP 実装は `request_payload` のみ（省略時は元ジョブを複製）。`lineage` はサーバ側でマージされる。
+        `from_stage` / `reason` は 014 次版・段階 rerun 向け。
       properties:
+        request_payload:
+          type: object
+          additionalProperties: true
         from_stage:
           type: string
-          description: 例 READ, JUDGE, NORMALIZE, META
+          description: 例 READ, JUDGE, NORMALIZE, META（次版）
         reason:
           type: string
 
-    JobAcceptedResponse:
+    TiMvpJobSummary:
       type: object
-      required: [job_id, status]
+      description: |
+        Django MVP のジョブ受理・一覧サマリ。006 `JobKind` 列は **未搭載**のため `kind` は含めない。
+        `artifact_refs` は未生成時 **null**、確定後は主要 ID の束（014 の部分集合）。
+      required: [job_id, workspace_id, status, current_stage, created_at, artifact_refs]
       properties:
         job_id:
           type: string
+        workspace_id:
+          type: string
         status:
           $ref: "#/components/schemas/JobStatus"
+        current_stage:
+          type: string
+          description: 実装固有段階（例 `queued`, `rerun_requested`, `mvp_pipeline_materialized`）。
+        created_at:
+          type: string
+          format: date-time
+        artifact_refs:
+          oneOf:
+            - $ref: "#/components/schemas/ArtifactRefs"
+            - type: "null"
+
+    TiMvpJobDetail:
+      allOf:
+        - $ref: "#/components/schemas/TiMvpJobSummary"
+        - type: object
+          description: GET ジョブ詳細（MVP）。確定 ref は `artifact_refs` に集約; トップレベル `evaluation_ref` は **MVP では返さない**。
+          properties:
+            idempotency_key:
+              type: string
+              nullable: true
+            source_type:
+              type: string
+            source_ref:
+              type: string
+            request_payload:
+              type: object
+              additionalProperties: true
+            error_code:
+              type: string
+            error_message:
+              type: string
+            started_at:
+              type: string
+              format: date-time
+              nullable: true
+            completed_at:
+              type: string
+              format: date-time
+              nullable: true
+            updated_at:
+              type: string
+              format: date-time
+            requested_by_id:
+              type: integer
+              nullable: true
+
+    TiMvpNormalizedDataset:
+      type: object
+      description: |
+        Django `NormalizedDatasetSerializer` の事実形（003 MVP）。`rows` / `trace_map` は **トップレベルに無く**
+        `dataset_payload` に格納されうる。Phase 4 で 006 `NormalizedDataset` へ **additive** 拡張予定。
+      required:
+        - dataset_id
+        - workspace_id
+        - schema_version
+        - dataset_payload
+        - created_at
+        - updated_at
+      properties:
+        dataset_id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: 未紐付け時 null
         table_id:
           type: string
+          format: uuid
           nullable: true
+        workspace_id:
+          type: string
+        schema_version:
+          type: string
+        dataset_payload:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TiMvpAnalysisMetadata:
+      type: object
+      description: |
+        Django `AnalysisMetadataSerializer` の事実形（004 MVP）。`grain` は **未投影**。
+        Phase 4 で 006 `AnalysisMetadata` へ **additive** 整合。
+      required:
+        - metadata_id
+        - dataset_id
+        - workspace_id
+        - review_required
+        - review_points
+        - dimensions
+        - measures
+        - decision
+        - created_at
+        - updated_at
+      properties:
+        metadata_id:
+          type: string
+          format: uuid
+        dataset_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+        review_required:
+          type: boolean
+        review_points:
+          type: array
+          items: {}
+        dimensions:
+          type: array
+          items: {}
+        measures:
+          type: array
+          items: {}
+        time_axis:
+          nullable: true
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: "null"
+        decision:
+          type: object
+          additionalProperties: true
+          description: 004 用 JSON。002 Judgment の decision とは別。
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TiMvpConfidenceEvaluation:
+      type: object
+      description: |
+        Django `ConfidenceEvaluationSerializer` の事実形（011 MVP）。`decision_recommendation` は **JSON object**。
+        Phase 4 で `scores` / `explanation` / `table_id` 等を **additive** 追加し 006 に寄せる。
+      required:
+        - evaluation_ref
+        - metadata_id
+        - workspace_id
+        - confidence_score
+        - risk_signals
+        - decision_recommendation
+        - created_at
+        - updated_at
+      properties:
+        evaluation_ref:
+          type: string
+          format: uuid
+          description: パス `evaluation_ref` と同一。DB PK `evaluation_id`。
+        metadata_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+        confidence_score:
+          type: number
+        risk_signals:
+          type: array
+          items: {}
+        decision_recommendation:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TiMvpHumanReviewSession:
+      type: object
+      description: |
+        Django `HumanReviewSessionSerializer` の事実形（005 MVP）。`table_id` / `pending_questions` / `answers` は **含まない**。
+        Phase 4 で 006 `HumanReviewSession` へ **additive** 拡張予定。
+      required:
+        - session_id
+        - metadata_id
+        - workspace_id
+        - state
+        - review_required_snapshot
+        - review_points_snapshot
+        - created_at
+        - updated_at
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        metadata_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+        state:
+          $ref: "#/components/schemas/HumanReviewSessionState"
+        review_required_snapshot:
+          type: boolean
+        review_points_snapshot:
+          type: array
+          items: {}
+        resolution_grade:
+          type: string
+          nullable: true
+        created_by_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    JobAcceptedResponse:
+      description: 後方互換名。**MVP 実装は `TiMvpJobSummary` と同一形**。
+      allOf:
+        - $ref: "#/components/schemas/TiMvpJobSummary"
 
     JobDetail:
+      description: 006 完全版向けドラフト。**MVP GET は `TiMvpJobDetail` を参照**。
       allOf:
         - $ref: "#/components/schemas/JobSummary"
         - type: object
@@ -625,7 +1077,9 @@ components:
 
     JobSummary:
       type: object
-      required: [job_id, status, kind]
+      description: |
+        006 `JobRun` 投影のドラフト。**MVP バックエンドは `TiMvpJobSummary` を返す**（`kind` なし）。
+      required: [job_id, status]
       properties:
         job_id:
           type: string
@@ -633,6 +1087,7 @@ components:
           $ref: "#/components/schemas/JobStatus"
         kind:
           $ref: "#/components/schemas/JobKind"
+          description: MVP 実装では **省略**（DB 列未導入時）。
         table_id:
           type: string
           nullable: true
@@ -647,8 +1102,8 @@ components:
 
     JobStatus:
       type: string
-      enum: [PENDING, RUNNING, SUCCEEDED, FAILED]
-      description: 006 JobRun.status
+      enum: [PENDING, RUNNING, SUCCEEDED, FAILED, CANCELED]
+      description: 006 JobRun.status（`CANCELED` は DB 側で保持しうる。MVP パイプラインでは未使用の場合あり）。
 
     JobKind:
       type: string
@@ -696,8 +1151,22 @@ components:
 
     TableReadArtifact:
       type: object
-      description: 006 TableReadArtifact。cells 等は TODO 深い nest は object。
+      description: |
+        006 TableReadArtifact。cells は 001 **稀疏**表現（深い nest は Phase 4 で Schema 化）。
+        MVP 例: `R0C0` キーに `raw_display` / 座標メタを載せる（bbox だけの別名オブジェクトに置き換えない）。
       required: [artifact_id, table_id, cells, merges, parse_warnings]
+      example:
+        artifact_id: "6f2c8b9a-1d3e-4c5b-9a8b-1234567890ab"
+        table_id: "7a3c8b9a-1d3e-4c5b-9a8b-1234567890cd"
+        cells:
+          R0C0:
+            raw_display: ""
+            r: 0
+            c: 0
+            _mvp_stub: true
+            note: "001 MVP sparse placeholder"
+        merges: []
+        parse_warnings: []
       properties:
         artifact_id:
           type: string
@@ -719,7 +1188,9 @@ components:
 
     JudgmentResult:
       type: object
-      description: 006 JudgmentResult。decision は 002。decision_recommendation は含めない。
+      description: |
+        006 JudgmentResult。decision は 002。decision_recommendation は含めない。
+        MVP では `taxonomy_code` に **`TI_TABLE_UNKNOWN`** を用いうる（009／002 暫定標準）。
       required: [judgment_id, table_id, decision, taxonomy_code, evidence]
       properties:
         judgment_id:
@@ -749,7 +1220,9 @@ components:
 
     NormalizedDataset:
       type: object
-      description: 006 NormalizedDataset
+      description: |
+        **006 Phase 4 目標形**。**現行 GET `/datasets/{id}` は `TiMvpNormalizedDataset`**。
+        移行時は `dataset_payload` からトップレベル `rows`/`trace_map` への **additive** 複製または段階移行。
       required: [dataset_id, table_id, rows, trace_map]
       properties:
         dataset_id:
@@ -770,7 +1243,9 @@ components:
 
     AnalysisMetadata:
       type: object
-      description: 006 AnalysisMetadata
+      description: |
+        **006 Phase 4 目標形**。**現行 GET `/metadata/{id}` は `TiMvpAnalysisMetadata`**。
+        `grain` 等は Phase 4 で **additive**。
       required: [metadata_id, dataset_id, grain, dimensions, measures]
       properties:
         metadata_id:
@@ -823,7 +1298,9 @@ components:
 
     HumanReviewSession:
       type: object
-      description: 006 HumanReviewSession
+      description: |
+        **006 Phase 4 目標形**（ドラフト）。**現行 API の GET/POST 201 は `TiMvpHumanReviewSession`**。
+        実装は Phase 4 で本スキーマに **additive** 寄せる。
       required: [session_id, table_id, state, pending_questions]
       properties:
         session_id:
@@ -837,11 +1314,14 @@ components:
           items:
             type: object
             additionalProperties: true
+        metadata_id:
+          type: string
+          description: 006 / 005 での関連。Phase 4 で必須化しうる
         answers:
           type: array
           items:
             $ref: "#/components/schemas/ReviewAnswer"
-          description: 取得 API では省略または別リソースでも可（TODO）
+          description: 取得 API で同梱する場合（方針は 005 / 014 次版）
 
     HumanReviewSessionState:
       type: string
@@ -890,8 +1370,52 @@ components:
           type: string
           nullable: true
 
+    TiMvpReviewAnswerItem:
+      type: object
+      description: |
+        Django `ReviewAnswerItemSerializer` の事実形。**006 `ReviewAnswer`（`point_id`, `answer_id`, `answer_type` 等）とは別物**。
+      required: [question_key, answer_value]
+      properties:
+        question_key:
+          type: string
+          maxLength: 255
+          description: 質問識別子（MVP は自由キー。004 `review_points` の `id` 等と対応付けはクライアント責務）。
+        answer_value:
+          description: |
+            Django `JSONField`。任意の JSON 値（オブジェクト・配列・スカラー・null）。MVP テスト例はオブジェクト `{ "ok": true }`。
+          example:
+            ok: true
+
+    TiMvpSubmitReviewAnswersRequest:
+      type: object
+      description: |
+        Django `SubmitReviewAnswersRequestSerializer` の事実形。`POST .../review-sessions/{session_id}/answers` の **唯一の正しい request**。
+        `mark_resolved` / `resolution_grade` は **session 行**の更新に用いる（`submit_review_answers` サービス）。
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/TiMvpReviewAnswerItem"
+          description: 1 問 1 要素。空配列は検証上許容（状態遷移は実装ロジック依存）。
+        mark_resolved:
+          type: boolean
+          default: false
+          description: |
+            `true` のとき、回答追加後に session.state を **RESOLVED** にする（OPEN かつ answers 非空時は **IN_PROGRESS** を経由しうる）。
+        resolution_grade:
+          type: string
+          maxLength: 64
+          nullable: true
+          description: 非空のとき session.resolution_grade に保存。空文字・null は「未設定」扱い。
+
     SubmitReviewAnswersRequest:
       type: object
+      deprecated: true
+      description: |
+        **006 Phase 4 向けドラフト（現行 API では使用しない）**。
+        **事実契約の POST body は `TiMvpSubmitReviewAnswersRequest` のみ。**
+        将来 `point_id` / `client_nonce` / 型付き `ReviewAnswer` を body に載せる場合のメモ用スキーマ。
       required: [answers]
       properties:
         answers:
@@ -899,9 +1423,92 @@ components:
           items:
             $ref: "#/components/schemas/ReviewAnswer"
 
+    TiMvpSuppressionRecord:
+      type: object
+      description: MVP `GET .../suppression/` の配列要素（`SuppressionRecord` ORM の投影）。
+      properties:
+        id:
+          type: string
+          format: uuid
+        session_id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+        suppression_level:
+          type: string
+        suppression_reason:
+          type: string
+        suppressed_targets:
+          type: array
+          items: {}
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TiMvpSubmitReviewAnswersResponse:
+      type: object
+      description: |
+        Django `ReviewSessionAnswersView` の 200 本文。`HumanReviewSessionSerializer` + `HumanReviewAnswerSerializer(created)`。
+        **Request 契約は `TiMvpSubmitReviewAnswersRequest`**。
+      required: [session, answers]
+      properties:
+        session:
+          $ref: "#/components/schemas/TiMvpHumanReviewSession"
+        answers:
+          type: array
+          items:
+            $ref: "#/components/schemas/TiMvpHumanReviewAnswer"
+          description: 当該 POST で **新規作成された**回答行のみ（既存行の全件再掲ではない）。
+
+    TiMvpHumanReviewAnswer:
+      type: object
+      description: |
+        Django `HumanReviewAnswerSerializer` / ORM `HumanReviewAnswer` の事実形。**整数 PK `id`**。
+        **`question_key` / `answer_value` が回答の契約**。006 の `answer_id`（UUID）/`point_id`/`client_nonce` 等は **未採用**（Phase 4 で **additive** しうる）。
+      required:
+        - id
+        - session_id
+        - question_key
+        - answer_value
+        - answered_by_id
+        - answered_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: integer
+          description: DB 主キー（自動採番）。
+        session_id:
+          type: string
+          format: uuid
+        question_key:
+          type: string
+        answer_value:
+          description: リクエストの `answer_value` を永続化した JSON（任意形）。
+          example:
+            ok: true
+        answered_by_id:
+          type: integer
+          nullable: true
+          description: 認証ユーザの PK。未設定時は null。
+        answered_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
     SuppressionStateResponse:
       type: object
-      description: 005 suppression の投影。詳細は TODO。
+      description: |
+        将来の正規形（`session_id` + `records`）。**MVP 実装は本スキーマではなく `TiMvpSuppressionRecord[]` を返す**。
       properties:
         session_id:
           type: string
@@ -931,18 +1538,20 @@ components:
 
     ConfidenceEvaluation:
       type: object
-      description: 006 ConfidenceEvaluation。decision_recommendation は 011 のみ。
+      description: |
+        **006 Phase 4 目標形**（ドラフト）。**現行 GET は `TiMvpConfidenceEvaluation`**。
+        API パス名は `evaluation_ref`、JSON では 006 に従い `evaluation_id` を主としうる（015 §5.2）。
       required: [evaluation_id, table_id, scores, decision_recommendation, explanation]
       properties:
         evaluation_id:
           type: string
-          description: API パスでは `evaluation_ref` として同値を渡す
+          description: "evaluation_ref パスと同一キー空間"
         table_id:
           type: string
         scores:
           type: object
           additionalProperties: true
-          description: 011 正本。内部キーは TODO
+          description: 011 正本
         decision_recommendation:
           $ref: "#/components/schemas/DecisionRecommendation"
         explanation:
@@ -954,14 +1563,20 @@ components:
 
     SuggestionSet:
       type: object
-      description: 006 SuggestionSet
-      required: [suggestion_run_id, table_id, analysis_candidates, suppression_applied]
+      description: |
+        006 SuggestionSet。**MVP 契約**: `table_id` は **TableScope 未紐付け時に空文字列 `""`** になりうる（null ではない）。
+        `metadata_id` を主アンカーとする。
+      required: [suggestion_run_id, table_id, analysis_candidates, suppression_applied, metadata_id]
       properties:
         suggestion_run_id:
           type: string
           description: API では `suggestion_run_ref` パスと同値
         table_id:
           type: string
+          description: 001 アンカー。**MVP では空文字列可**（未バインド）。
+        metadata_id:
+          type: string
+          format: uuid
         analysis_candidates:
           type: array
           items:
@@ -971,6 +1586,12 @@ components:
           items:
             type: object
             additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
 
     SuggestionCandidate:
       type: object

@@ -1,0 +1,25 @@
+{
+  "id": "key_value_2x3",
+  "description": "2 行×3 列のラベル＋値＋単位で KEY_VALUE 分岐",
+  "table_scope": {
+    "row_min": 0,
+    "col_min": 0,
+    "row_max": 1,
+    "col_max": 2
+  },
+  "cells": {
+    "R0C0": {"r": 0, "c": 0, "raw_display": "Field"},
+    "R0C1": {"r": 0, "c": 1, "raw_display": "Value"},
+    "R0C2": {"r": 0, "c": 2, "raw_display": "Unit"},
+    "R1C0": {"r": 1, "c": 0, "raw_display": "Revenue"},
+    "R1C1": {"r": 1, "c": 1, "raw_display": "1,234"},
+    "R1C2": {"r": 1, "c": 2, "raw_display": "JPY"}
+  },
+  "merges": [],
+  "expected": {
+    "taxonomy_code": "TI_TABLE_KEY_VALUE",
+    "heuristic_primary": "TI_TABLE_KEY_VALUE",
+    "axis_gates_passed": true,
+    "axis_gate_failures": []
+  }
+}

@@ -2,9 +2,9 @@
 id: SPEC-TI-003
 title: 変換・正規化仕様書
 status: Draft
-version: 0.2
+version: 0.2.3
 owners: []
-last_updated: 2026-04-17
+last_updated: 2026-04-03
 depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 ---
 
@@ -111,6 +111,25 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 
 - **`HeadingTree`**（006 §5.5、[SPEC-TI-010](../01_foundation/SPEC-TI-010-heading-model.md)）— `cell_bindings` がある場合、縦持ち・多段展開の主入力。  
 - **002 の `evidence[].details`** — 行種別マップ、列役割マップ、単位候補、`UNIT_SCOPE_*`、`ambiguity` 等（006 MINOR または暫定 JSON）。
+
+### MVP 実装接続（backend）
+
+`normalization_input_hints` は **`JudgmentResult.evidence`（J2-ROW-001 / J2-COL-001）由来**の入力ヒントとして materialize で `dataset_payload` に載せ、003 スタブが参照する。
+
+同一ジョブの materialize では、`dataset_payload.normalization_input_hints` に 002 の **J2-ROW / J2-COL**（`by_row_index` / `by_column_index`）を載せ、MVP 正規化スタブが **`rows[]`** と **`trace_map`** に次を載せうる: **`header_band_skipped`**、**`note_candidate`**、**`skipped_row_candidate`**（集計行）、**`attribute_column_candidate`** / **`measure_column_candidate`**（その他列は **`column_role_hint`**）。**004 の `dimensions`／`measures` 確定ではない**（`semantic_lock_in: false` を付けうる）。スキーマ識別子の例: `ti.mvp_normalization_stub.v1`。
+
+#### `rows[].values` の列キーと `column_slots[]`（MVP）
+
+- **`rows[].values` のキー**は当面 **`c{N}`**（0-based 列 index）を**互換の正**として維持する。既存クライアント・転記ロジックとの整合のため、**本段階では `values` キーを論理列 ID に置き換えない**。  
+- **論理列への将来接続**のため、`dataset_payload` に **`column_slots[]`**（仮称・[SPEC-TI-006 §5.7](../01_foundation/SPEC-TI-006-io-data.md)）を**並置しうる**。各要素の**最小スキーマ**（いずれも 003 の入力／変換補助であり、**004 の意味確定ではない**）:  
+  - **`slot_id`**: 安定しうるスロット識別子（MVP 例: `col_{N}`）。  
+  - **`table_column_index`**: 001／002 と共有する **0-based inclusive** 列 index。  
+  - **`values_key`**: 対応する **`rows[].values` のキー**（通常 `c{N}`）。  
+  - **任意** **`hint_from_002`**: `normalization_input_hints.by_column_index` に対応する J2-COL ラベル文字列。  
+  - **任意** **`trace_ref_ids`**: 当該列に関連する `trace_map[].trace_ref` の列挙（説明責任）。  
+  - **任意** **`trace_kind_preview`**: 当該列に関連する `trace_map[].kind` の要約（実装便宜）。  
+- **スロット集合**: `by_column_index` のキーと、実際に **`values` に転記された列**（`cN` から復元した index）の**和集合**とする。  
+- スキーマ識別子の例: `ti.mvp_column_slots.v1`（`mvp_normalization_stub` メタと併記しうる）。
 
 ### 入力の優先順位（矛盾時）
 
@@ -409,6 +428,9 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.2.3 | 2026-04-03 | `rows[].values` は当面 `cN` 維持。将来の論理列用に `dataset_payload.column_slots[]` を並置しうる旨（最小スキーマ・004 非確定）。 |
+| 0.2.2 | 2026-04-08 | MVP trace `kind` 細分化（`header_band_skipped` / `note_candidate` / 列候補）。`normalization_input_hints` の evidence 由来を明記。 |
+| 0.2.1 | 2026-04-08 | MVP 接続: `normalization_input_hints` からスタブが `rows`/`trace_map` にスキップ行・列役割ヒントを載せうる旨（`ti.mvp_normalization_stub.v1`）。 |
 | 0.2 | 2026-04-17 | `rows[]` 最低限の論理構造、trace_map 観点別追跡、TIME_SERIES 分岐メタ、FORM_REPORT 部分正規化基準、UNKNOWN／REJECT 暫定標準（012／014 前提）、PIVOT_LIKE 既定経路・aggregate 分離。004／005／011／013 中継粒度の補強。 |
 | 0.1 | 2026-04-03 | Draft 初版本文。001/002 境界、26 章立て、稀疏・結合前提、trace_map、taxonomy 経路、単位・集計・注記、UNKNOWN/NEEDS_REVIEW、NormalizationResult、委譲。 |
 

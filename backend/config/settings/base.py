@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "rag",
     "enduser",
     "ai",
+    "table_intelligence",
 ]
 
 MIDDLEWARE = [
@@ -108,6 +109,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "EXCEPTION_HANDLER": "table_intelligence.exception_handler.table_intelligence_aware_exception_handler",
 }
 
 LOGIN_URL = "/app/login"
@@ -121,6 +123,11 @@ RQ_QUEUES = {
         "DEFAULT_TIMEOUT": 600,
     },
 }
+
+# 1 / true / yes で POST /table-analysis/jobs/ 直後に materialize を同期実行（テスト・緊急用）
+TI_TABLE_INTELLIGENCE_PIPELINE_SYNC = (
+    os.environ.get("TI_TABLE_INTELLIGENCE_PIPELINE_SYNC", "").lower() in ("1", "true", "yes")
+)
 
 USE_S3 = os.environ.get("USE_S3", "0") == "1"
 if USE_S3:

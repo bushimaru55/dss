@@ -25,7 +25,7 @@ depends_on:
 | 題名 | API 仕様書（表解析パイプライン実装接続） |
 | 版 | 0.1 |
 | 状態 | Draft |
-| 最終更新 | 2026-04-07 |
+| 最終更新 | 2026-04-03 |
 
 本版は **実装接続フェーズの概念版** である。OpenAPI 3 の完全定義、全エンドポイントの request/response JSON Schema、認証スキームの細目は **本書の次版またはリポジトリ内 OpenAPI アーティファクト**で確定する。
 
@@ -187,7 +187,12 @@ depends_on:
 ### 7.2 レスポンスエンベロープ（概念）
 
 - **成功**: ボディは **006 準拠の JSON** または **ジョブサマリオブジェクト**（`job_id`, `status`, 確定済み ref の部分集合）。
-- **エラー**: **012 準拠のコード**を含むオブジェクト（`error_code`, `message`, `details`）。HTTP ステータスとの対応表は **014 次版または OpenAPI**で固定。
+- **エラー**: **012 準拠のコード**を含むオブジェクト。Table Intelligence の **`/api/v1/*`** では **`error_code` + `detail`（+ `errors`）**（OpenAPI 0.1.3 `ErrorResponse`）。`message` / `details` / `request_id` は Phase 4 で拡張しうる。
+- **HTTP ステータス（OpenAPI 0.1.4）**: 主要 operation ごとに **400 / 401 / 404** を path に列挙。**workspace 越境・存在しない ID は 404 マスク**（§14.3）。**403**（`TI_PERMISSION_DENIED`）は components に定義するが **MVP では未認証が主に 401** のため **全 path には列挙しない**。**409** は stale / 競合の **将来枠**—一部 path のみ記載し **MVP では多く未使用**。
+- **Review answers I/O（OpenAPI 0.1.5）**: `POST .../answers` の **正しい request** は **`TiMvpSubmitReviewAnswersRequest`**。006 の `point_id` / `client_nonce` 等は **未使用**（Phase 4 **additive**）。
+- **409（OpenAPI 0.1.6 / §13.1）**: 操作別の **意図・分類（A/B/C/D）** と **path 上の 409 の有無**を固定。**MVP 実装は 409 を広く返さない**。
+- **401（OpenAPI 0.1.7）**: **OpenAPI に載るすべての operation** で **`401 Unauthorized`** を path に列挙。[GUIDE-TI-table-intelligence-api-errors.md](./GUIDE-TI-table-intelligence-api-errors.md) と一致。
+- **409（OpenAPI 0.1.8）**: **`POST /suggestion-runs`** の **superseded metadata** のみ **実装**。レスポンスは **`TI_CONFLICT`**（`exception_handler`）。
 
 ### 7.3 ページネーション・フィルタ
 
@@ -218,6 +223,8 @@ depends_on:
 
 **POST 受理レスポンスの基本形（概念）**: `job_id`, `status`（例: `PENDING`）, 既知なら `table_id`。**本体は GET で再取得**（**§4.2** の実行系／参照系分離）。
 
+**MVP 実装注記**: 同一 `Idempotency-Key` の再送は **HTTP 200**、新規受理は **202** としうる（詳細は **§16**、OpenAPI `TiMvpJobSummary`）。
+
 ---
 
 ## 9. 成果物参照 API
@@ -233,6 +240,10 @@ depends_on:
 | SuggestionSet | `GET /v1/suggestion-runs/{suggestion_run_ref}` または `GET /v1/suggestions/{suggestion_run_ref}` | 006 `SuggestionSet` |
 | 関連成果物一覧 | `GET /v1/tables/{table_id}/artifacts` | ref の一覧（015 の lineage 投影の前提） |
 
+**MVP 実装注記（`GET .../tables/{table_id}/read-artifact`）**: 応答は **`table_read_artifact`（015 §7.4）の `is_latest` 行**から組み立てる。MVP パイプライン `materialize` が **`TableScope` 直後**に **001 本格エンジン前のスタブ**（稀疏 `cells`・`R{row}C{col}` 形式に寄せた最小キー、`merges`/`parse_warnings` は空配列から開始）を INSERT する。**行が無い場合は 404**（§14.3 の **404 マスク**に従う）。**rerun** 後は旧 `table_id` 側の latest が外れうるため、旧 URL は **404** になりうる（新 `table_id` の GET が正）。
+
+**MVP 実装注記（`GET .../tables/{table_id}/decision`）**: 応答は **`judgment_result`（015 §7.5）の `is_latest` 行**から組み立てる。MVP パイプライン `materialize` が **002 本格エンジン前のスタブ行**を INSERT する。**行が無い場合は 404**（テーブル不存在・workspace 越境は §14.3 の **404 マスク**に従い区別しない）。`taxonomy_code` は **`TI_TABLE_UNKNOWN`** を既定とし、011 の `decision_recommendation` は **本レスポンスに含めない**（`/evaluations/...` 側）。
+
 ---
 
 ## 10. 人確認 API
@@ -244,7 +255,7 @@ depends_on:
 | review session 作成 | `POST /v1/review-sessions` | `metadata_id` 等を受け、005 に従い `session_id` を発行。 |
 | session 取得 | `GET /v1/review-sessions/{session_id}` | 006 `HumanReviewSession`。 |
 | review_points 取得 | `GET /v1/metadata/{metadata_id}/review-points` または session 配下 | 004 正本の投影。 |
-| answers 登録 | `POST /v1/review-sessions/{session_id}/answers` | 006 `answers[]` 要素に準拠。 |
+| answers 登録 | `POST /v1/review-sessions/{session_id}/answers` | **MVP 事実**: OpenAPI **`TiMvpSubmitReviewAnswersRequest`**（`answers[]`: `question_key` + `answer_value` 任意 JSON、任意 `mark_resolved` / `resolution_grade`）。006 `ReviewAnswer` 完全形は **Phase 4 additive**。 |
 | state 遷移 | `PATCH /v1/review-sessions/{session_id}` または専用サブリソース | 005 が許可する遷移のみ。 |
 | rerun 要求 | `POST /v1/review-sessions/{session_id}/rerun` | パイプライン再実行トリガ。 |
 | suppression 結果参照 | `GET /v1/review-sessions/{session_id}/suppression` | **suppression の正本は 005**。013 が返す抑制済み候補の根拠説明にこの参照を紐づけうる。 |
@@ -289,6 +300,8 @@ depends_on:
 
 ## 13. エラー / 異常系
 
+**利用者向けの HTTP ステータス早見**（非エンジニア可読の 1 ページ）は [GUIDE-TI-table-intelligence-api-errors.md](./GUIDE-TI-table-intelligence-api-errors.md) を参照。
+
 本書は **012 のコード体系**に合わせる。以下は **API 契約で頻出するカテゴリ**である。
 
 | カテゴリ | 意味 | 例示的な条件 |
@@ -301,7 +314,36 @@ depends_on:
 | rerun required | 再実行が必要 | 中間成果が無効化された後の参照 |
 | suppression blocked | 抑制により操作不可 | 005／013 組合せのポリシー |
 
-HTTP ステータスと `error_code` の対応は **OpenAPI 化時に固定**する。
+HTTP ステータスと `error_code` の対応は **OpenAPI 化時に固定**する。**409 の操作別の意図と MVP 実装差**は **§13.1** を正とする。
+
+### 13.1 `409 Conflict` 実装マトリクス（MVP と将来）
+
+**境界（再掲）**
+
+- **404 マスク**: テナント越境・無権限の「存在はするが見せない」は **常に 404**（§14.3）。**409 に昇格しない**。
+- **400**: リクエスト構文・**同一 workspace 内で検証可能な参照不整合**（例: `dataset_id` が当該 `metadata_id` と不一致）は **クライアント誤り**として **400**（MVP 実装: `POST /suggestion-runs` の `ValidationError`）。
+- **409**: **意味のある競合**のみ—**サーバの現在状態とリクエストの意図が両立しない**が、**再取得・別操作で解消しうる**とき。無闇に増やさない。
+
+**分類凡例**: **A**＝今すぐ 409 実装を優先しうる / **B**＝OpenAPI・本節に将来枠として残す（現状未返却） / **C**＝400 または 404 で足りる / **D**＝ポリシー・設計決定が先（HTTP だけでは決めない）。
+
+| Operation | 409 候補条件（例） | 分類 | メモ |
+|-----------|-------------------|------|------|
+| `POST /table-analysis/jobs` | 冪等キー競合で「別内容の POST」 | **D** | 現状は **200/202 で既存 job を返す**方針。真の競合検知は **Idempotency-Key + ボディハッシュ**等の設計が先。 |
+| `POST /table-analysis/jobs` | ジョブ同時二重受理 | **D** | キュー・DB 制約レベルの論点。**409 より 202 重複受理の許容**もありうる。 |
+| `POST .../jobs/{job_id}/rerun` | 元ジョブが superseded / 再実行禁止状態 | **B** | **015 §10** lineage 充実後に「古い `job_id` からの rerun」を拒否するなら 409 候補。MVP は **常に新 job 作成**。 |
+| `POST .../jobs/{job_id}/rerun` | パイプライン実行中の再 rerun | **B** | **「進行中は拒否」**を入れるなら 409。未導入なら **D**（許可するかどうかの製品判断）。 |
+| `POST /review-sessions` | 同一 `metadata_id` にアクティブ session 既存 | **D** | MVP は **毎回新規作成**。一意制約・「開いている session は 1 つ」なら将来 **409** ありうる。 |
+| `POST .../review-sessions/{id}/answers` | 005 **禁止遷移**（例: 終端 state への回答） | **B** | §12.1・§13 表の **invalid state transition**。**楽観ロック**（`If-Match` / `updated_at`）なら同一分類。MVP は **状態ガード未実装**。 |
+| `POST .../review-sessions/{id}/answers` | 同一 `question_key` の上書き禁止ポリシー | **D** | 005 / 015 §9.2 の **append vs 最新 1 件**の正本決定後。 |
+| `POST .../review-sessions/{id}/rerun` | 既に **WAITING_RERUN** 等で再実行待ち | **B** | 二重パイプライン起動を嫌うなら 409。MVP は **検知せず 202**。 |
+| `POST .../review-sessions/{id}/rerun` | state が rerun 不適格 | **B** | 005 許可遷移との組合せ。 |
+| `POST /suggestion-runs` | **`metadata_id` が lineage 上 stale**（`artifact_relation` の metadata **旧→新** SUPERSEDES） | **A** | **実装済（MVP）**: `TI_JOB_RERUN_SUPERSEDES` / `TI_REVIEW_RERUN_SUPERSEDES` の **from** が当該 ID なら **409** + `TI_CONFLICT`。**`is_latest` 列は未使用**。 |
+| `POST /suggestion-runs` | `dataset_id` / `evaluation_ref` / `session_id` が metadata と不整合 | **C** | 実装は **400**（`ValidationError`）。**404 にしない**（リソースは存在するが組合せが悪い）。 |
+| `GET .../suggestion-runs/{ref}/candidates` | stale / 競合 | **C** | **読取は 200 で保存済み候補を返す**が自然。ref 自体が無効・越境は **404**。**GET に 409 は付けない**（OpenAPI 0.1.6 で削除）。 |
+
+**MVP 実装（table_intelligence）の事実**: **`POST /suggestion-runs`** のみ **superseded metadata** で **`HTTP 409`**（`TI_CONFLICT`）。他 operation は **現状 409 未使用**（answers / review rerun は将来枠）。`exception_handler` は **409** に `TI_CONFLICT` を付与。
+
+**OpenAPI（0.1.6 以降）**: **`POST .../answers`**・**`POST .../review-sessions/.../rerun`** に **将来枠として 409** を残す。**`POST /suggestion-runs`** の **409 は stale metadata 実装と一致**（**0.1.8**）。**`GET .../candidates`** から **409 を削除**（実装・§12.4 と整合）。
 
 ---
 
@@ -341,12 +383,212 @@ HTTP ステータスと `error_code` の対応は **OpenAPI 化時に固定**す
 
 ---
 
-## 16. 今後拡張
+## 16. MVP バックエンド実装との契約差分（整理）
+
+本節は **Table Intelligence Django API（MVP）** と、本書・OpenAPI ドラフトの **意図した完全契約（006 準拠 Phase 4）** の差を固定する。
+**正の優先順位**: 運用上は **リポジトリ内 OpenAPI `table-intelligence-openapi-draft.yaml` の 0.1.8 以降**（0.1.3 エンベロープ〜0.1.7 までの内容に加え、**0.1.8: `POST /suggestion-runs` の stale metadata 409**）を **MVP 実装の事実契約**とみなし、本書 §4〜§9 は **原則・識別子・責務**の正本とする。
+
+### 16.1 ジョブ実行系
+
+| 項目 | 完全契約（目標） | MVP 実装（現状） | どちらを正にするか（本ラウンド） |
+|------|------------------|------------------|----------------------------------|
+| `POST /table-analysis/jobs` 成功ステータス | 非同期受理 **202** のみ記載されていた | 新規 **202**、同一 `Idempotency-Key` 再送は **200** | **実装を正**（OpenAPI を 200/202 に更新済） |
+| 冪等キー | ヘッダ推奨（§7.1） | ヘッダ `Idempotency-Key`（ボディは未使用） | **実装を正** |
+| 受理レスポンス形 | `JobAcceptedResponse`（`job_id`, `status`, 任意 `table_id`） | `TiMvpJobSummary` 相当（`workspace_id`, `current_stage`, `artifact_refs` 等） | **実装を正**（OpenAPI に `TiMvpJobSummary` 追記） |
+| `JobRun.kind` / `table_id` トップレベル | 006 想定 | DB 列・レスポンスとも **未搭載**。ref は **`artifact_refs` 束** | **仕様側を Phase 4 保留**（OpenAPI `JobSummary` の `kind` 必須を緩和） |
+| `GET /jobs/{id}` の ref | トップレベル `evaluation_ref` 等もありうる | **詳細も `artifact_refs` に集約**、かつ `request_payload`・`idempotency_key` 露出 | **実装を正**（GET は `TiMvpJobDetail`） |
+| `POST .../jobs/{id}/rerun` | OpenAPI は **202** | **201 Created** + `TiMvpJobSummary` | **実装を正**（REST のリソース作成に合わせ OpenAPI を 201） |
+| `POST .../review-sessions/{id}/rerun` | **202** | **202**（一致） | 維持 |
+
+### 16.2 人確認・抑制
+
+| 項目 | 完全契約（目標） | MVP 実装（現状） | どちらを正にするか |
+|------|------------------|------------------|---------------------|
+| `GET .../suppression` | `SuppressionStateResponse`（`session_id` + `records`）想定 | **`SuppressionRecord` の JSON 配列**を直接返却 | **実装を正**（OpenAPI を配列スキーマに変更。将来ラッパへ移行可） |
+| `HumanReviewSession` GET | 006 形（`table_id`, `pending_questions` 等） | **`metadata_id` + snapshot 列**中心、`table_id` は返さない | **実装を正**（OpenAPI を MVP 投影に合わせ記述） |
+| `POST .../answers` body | 006 `answers[]` 完全形想定 | **`TiMvpSubmitReviewAnswersRequest`**（`question_key` / `answer_value` + 任意 `mark_resolved` / `resolution_grade`） | **実装を正**（OpenAPI 0.1.5 で request を `TiMvp*` 化） |
+| `POST .../answers` 戻り | 次版 TODO | `{ "session", "answers" }` | **実装を正**（OpenAPI `TiMvpSubmitReviewAnswersResponse` + `TiMvpHumanReviewAnswer`） |
+
+### 16.3 評価・候補
+
+| 項目 | 完全契約（目標） | MVP 実装（現状） | どちらを正にするか |
+|------|------------------|------------------|---------------------|
+| `GET /evaluations/{evaluation_ref}` | 006 `ConfidenceEvaluation`（`scores`, `explanation`, `table_id`） | **`evaluation_ref`, `metadata_id`, `confidence_score`, `risk_signals`, `decision_recommendation`（JSON object）** | **実装を正**（011 の `decision_recommendation` はオブジェクトでも可と明記） |
+| `GET .../suggestion-runs/{ref}` の `table_id` | 非 null string 想定 | **未バインド時は空文字列 `""`** | **実装を正**（クライアントは `metadata_id` を主キーとする） |
+
+### 16.4 エラー表現
+
+| 項目 | 完全契約（目標） | MVP 実装（現状） | どちらを正にするか |
+|------|------------------|------------------|---------------------|
+| ボディ | 012 の `error_code` + `message` + `details` | **`/api/v1/*`**: `error_code` + `detail`（+ 任意 `errors`）にラップ済み（P4-1）。**他 `/api/*`**: DRF 既定 | **Ti エンベロープを正**（OpenAPI 0.1.3+ `ErrorResponse`）。主要 path の **HTTP ステータス列挙は 0.1.4**（§18.6）。`message` / `request_id` は Phase 4 **additive** |
+
+### 16.5 ワークスペース・404
+
+- 未知の `workspace_id` は **404 でマスク**（§14.3）。実装と一致。**正: 仕様・実装とも維持**。
+
+---
+
+## 17. 今後拡張
 
 - **OpenAPI 3 完全版**、Webhook／SSE によるジョブ完了通知。
 - **部分取得**（JSON Patch、GraphQL フィールド選択）による大成果物の最適化。
 - **SPEC-TI-015** との **列レベル対応表**（エンドポイント × DTO × テーブル）。
 - **016+**（運用、バッチ、外部コネクタ）との接続は本書の上に別層で定義する。
+
+---
+
+## 18. OpenAPI 0.1.8-draft 利用者向けガイドと Phase 4 移行計画
+
+本節は **クライアント実装者**向けである。OpenAPI **`document_version: 0.1.8-draft`**（`info.version: 0.1.8-draft`）を前提にする。**0.1.3〜0.1.7** の内容は **そのまま下位互換として含まれる**。**0.1.8** では **`POST /suggestion-runs`** の **409（superseded metadata）** を実装・記述と一致。
+
+### 18.1 文書間の役割（再掲）
+
+| 層 | 正本の役割 |
+|----|------------|
+| **本書 §4〜5・§14** | 原則・識別子・責務境界・404 マスク（変更容易度は低い） |
+| **OpenAPI 0.1.8** | MVP の **機械可読な事実契約**（0.1.7 まで＋**`POST /suggestion-runs` の stale metadata 409**） |
+| **006（Phase 4）** | **DTO・列挙・JSON 形の最終正本**（API レスポンスはここに収斂させる） |
+| **015** | 永続化・lineage；API フィールド名と列名の差は §5.1.1 |
+
+### 18.2 利用上の注意（迷いどころ）
+
+1. **`TiMvp*` を優先**  
+   Jobs の受理・詳細、review の suppression GET、answers POST の戻りは **`TiMvpJobSummary` / `TiMvpJobDetail` / `TiMvpSuppressionRecord[]` / `TiMvpSubmitReviewAnswersResponse`** で読む。同名の `JobSummary` / `JobDetail`（006 理想形）は **Phase 4 まで参照用**。
+2. **`GET /datasets/{id}` / `GET /metadata/{id}` / `GET /evaluations/{ref}` / `GET /review-sessions/{id}`（および session POST 201）**  
+   OpenAPI **0.1.2** では上記の **200/201 レスポンスが `TiMvpNormalizedDataset` 等に明示的に紐付く**。`NormalizedDataset` / `AnalysisMetadata` / `ConfidenceEvaluation` / `HumanReviewSession`（無印）は **006 Phase 4 目標形**として components に残り、生成クライアントは **path ごとの `TiMvp*` を採用**すれば実装と一致する。
+3. **`POST /table-analysis/jobs` のステータス**  
+   新規 **202**、冪等再送 **200**。**Location ヘッダは付けない**前提（`job_id` はボディ）。
+4. **冪等**  
+   **`Idempotency-Key` ヘッダ**を正とする。ボディ `idempotency_key` は OpenAPI 上 **deprecated**。
+5. **エラー（`/api/v1/*`）**  
+   **`error_code` + `detail`**（+ 検証時 `errors`）。未認証は多く **401**（`TI_AUTHENTICATION_REQUIRED`）。**403**（`TI_PERMISSION_DENIED`）は DRF 設定によりありうるが **OpenAPI では全 path に列挙せず** components のみ維持（実装と乖離しすぎないため）。**404** は不存在と **workspace 越境のマスク**の両方に使う（§14.3）。**409** の **path 別の意図**は **§13.1**—MVP では **主に未返却**。**他 `/api/*`** は DRF 既定のまま（エンベロープなし）。
+6. **`HumanReviewSession.state`**  
+   OpenAPI の enum は 006 草案より **広い**。サーバが返す値は **実装の部分集合**であり、**未知の値はフォールバック表示**で扱う（前方互換）。
+7. **Suggestion の主キー**  
+   **`metadata_id` を主アンカー**とする。`table_id` が **空文字**のときあり（未バインド）。
+
+### 18.3 エンドポイント別：利用観点レビュー
+
+#### Jobs
+
+| 操作 | クライアントがすべきこと |
+|------|-------------------------|
+| `POST /table-analysis/jobs` | `workspace_id` 必須。`Idempotency-Key` 推奨。**200 と 202 の両方**で `job_id` を取得し、ポーリングは `GET .../jobs/{job_id}` へ。 |
+| `GET .../jobs/{job_id}` | `status` と **`artifact_refs`**（null あり）で完了判定。詳細は `request_payload.mvp_pipeline` も参照しうるが **正は `artifact_refs`**（確定後）。 |
+| `POST .../jobs/{id}/rerun` | **201**。新 `job_id` で再度ポーリング。`request_payload.lineage` はサーバマージ（クライアントは通常意識不要）。 |
+
+#### Datasets / Metadata / Evaluations
+
+| 操作 | 注意 |
+|------|------|
+| `GET /datasets/{dataset_id}` | **`dataset_id`, `table_id`, `job_id`, `workspace_id`, `schema_version`, `dataset_payload`** を正。`dataset_payload` 内に MVP stub の `rows` 等が入りうる。OpenAPI `NormalizedDataset` のトップレベル `rows`/`trace_map` は **Phase 4 まで未対応の場合あり**。 |
+| `GET /metadata/{metadata_id}` | **`metadata_id`, `dataset_id`, `review_points`, `dimensions`, `measures`, `decision`** を正。`grain` は **未投影**（Phase 4）。 |
+| `GET /evaluations/{evaluation_ref}` | **`evaluation_ref`, `metadata_id`, `confidence_score`, `risk_signals`, `decision_recommendation`（オブジェクト）** を正。006 の `scores` / `explanation` / トップレベル `table_id` は **Phase 4**。 |
+
+#### Review sessions
+
+| 操作 | 注意 |
+|------|------|
+| `POST /review-sessions` | ボディは `metadata_id` のみ（MVP）。 |
+| `GET .../review-sessions/{id}` | **`session_id`, `metadata_id`, `state`, snapshot 列**。 |
+| `POST .../answers` | **Request**: OpenAPI **`TiMvpSubmitReviewAnswersRequest`**（`answers[]` に **`question_key` / `answer_value`** 必須、任意 **`mark_resolved`** / **`resolution_grade`**）。**Response 200**: **`TiMvpSubmitReviewAnswersResponse`**（`session` + 当リクエストで作成した **`TiMvpHumanReviewAnswer[]`**。行の **`id` は整数 PK**）。無印 `SubmitReviewAnswersRequest` は **006 将来用・deprecated**。 |
+| `POST .../rerun` | **202** + `TiMvpJobSummary`。 |
+| `GET .../suppression` | **JSON 配列**（ラッパなし）。要素形は `TiMvpSuppressionRecord`。 |
+
+#### Suggestion runs
+
+| 操作 | 注意 |
+|------|------|
+| `POST /suggestion-runs` | **主入力 `metadata_id`**。戻り **202** + `suggestion_run_ref`（`job_id` は MVP null 可）。 |
+| `GET .../suggestion-runs/{ref}` | **`suggestion_run_id`, `metadata_id`, `analysis_candidates`, `suppression_applied`** を正。`table_id` は **空文字あり**。 |
+| `GET .../candidates` | `candidates` + 条件付き `decision_recommendation`（011 JSON）。 |
+
+### 18.4 フィールド分類（クライアント依存の指針）
+
+#### 今すぐ依存してよい（安定意図・識別子・主フロー）
+
+- **識別子**: `job_id`, `workspace_id`, `dataset_id`, `metadata_id`, `session_id`, `evaluation_ref`（= evaluation_id 値）, `suggestion_run_id` / path の `suggestion_run_ref`
+- **Jobs**: `status`, `artifact_refs` の各キー（存在時）、`error_code` / `error_message`（失敗時）
+- **Metadata**: `dataset_id`, `review_required`, `review_points`, `dimensions`, `measures`, `decision`（004 用 JSON）
+- **Evaluation**: `decision_recommendation`（011・**オブジェクト**としてパース）
+- **Suggestion**: `metadata_id`, `analysis_candidates`, `suppression_applied`
+- **Review**: `state`, `review_required_snapshot`, `review_points_snapshot`
+- **HTTP 慣習**: Jobs POST の **200/202**、rerun job の **201**、review rerun の **202**
+
+#### TiMvp 暫定（動くが Phase 4 で見直し対象）
+
+- **`current_stage`**: 実装固有文字列。006 の段階 enum と **1:1 対応しない**可能性。
+- **`request_payload` 丸ごと**（クライアントは **読み取り専用・デバッグ**向け。新規ジョブの任意メタは将来 `input_parameters` 化しうる）
+- **`request_payload.mvp_pipeline`**: MVP スナップショット。**正規の完了判定は `artifact_refs` + `status`** を推奨。
+- **`dataset_payload`**: 003 の器。**006 の `rows`/`trace_map` トップレベル分離は Phase 4**。
+- **suppression GET の「生配列」**: 将来 `SuppressionStateResponse` ラッパへ **移行しうる**（§16.2）。
+- **answers の `question_key` / `answer_value`**: MVP の **事実契約**（OpenAPI `TiMvpReviewAnswerItem`）。006 `ReviewAnswer`（`point_id`, `answer_id` UUID 等）への **additive** 拡張余地あり。無印 `SubmitReviewAnswersRequest` は **将来ドラフト**（`deprecated`）。
+- **`TiMvpHumanReviewAnswer.id`（整数 PK）**: 006 は `answer_id`（UUID 等）になりうる。
+- **`/api/v1/*` 以外の API** のエラー: 引き続き DRF 既定（エンベロープなし）。
+
+#### Phase 4 で追加される想定（006 準拠）
+
+- **Jobs**: `kind`（`JobKind`）、トップレベルまたは冗長な `evaluation_ref` / `suggestion_run_ref`（ジョブ行スナップショット）、`table_id` のジョブ直下確定
+- **HumanReviewSession**: `table_id`, `pending_questions`（または 006 相当の質問モデル）、取得時 `answers` の統合方針
+- **ConfidenceEvaluation**: `scores`, `explanation`, トップレベル `table_id`（または辿れる ref の明文化）
+- **NormalizedDataset**: トップレベル `rows` / `trace_map` / `normalization_status`（006 準拠）
+- **AnalysisMetadata**: `grain` 等 006 必須フィールドの充足
+- **エラー**: **012 拡張**（`message` / `request_id` / 細粒度 `error_code` を **additive**）
+
+#### 将来非推奨化しそうなもの（計画レベル）
+
+- ボディ **`idempotency_key`**（ヘッダへ一本化済み）
+- ジョブ **`request_payload` への成果物スナップショット依存**（`mvp_pipeline` を **専用列 or ジョブ出力サブリソース**へ）
+- **`confidence_score` 単一 float**（`scores` オブジェクトへ吸収しうる）
+- suppression **配列直返し**（ラッパ + ページネーション）
+
+※ 非推奨の実行は **少なくとも 1 リリースサイクルの警告期間**を置く（§18.5）。
+
+### 18.5 Phase 4 移行計画（1 ページ）
+
+**ゴール**: レスポンス形を **006（Phase 4 JSON Schema）** に揃え、OpenAPI の **`TiMvp*` と 006 名が一致**するか、**明示的な別スキーマ名**で併記される状態にする。
+
+| 順序 | 対象 | 内容 | 理由 |
+|:----:|------|------|------|
+| P4-1 | **エラー（012）** | **済（OpenAPI 0.1.3 / 実装）**: `/api/v1/*` で `error_code` + `detail`（+ 任意 `errors`）。`message` / `request_id` は後続。他 `/api/*` は DRF 既定のまま。 | クライアント分岐の土台 |
+| P4-2 | **OpenAPI と実装の一致** | **済（0.1.2）**: `TiMvpNormalizedDataset` / `TiMvpAnalysisMetadata` / `TiMvpConfidenceEvaluation` / `TiMvpHumanReviewSession` を components に定義し、該当 **GET** および **POST review-sessions 201** を **`TiMvp*` に紐付け**。無印スキーマは 006 目標形として維持。 | 生成コードと実装の乖離解消 |
+| （附属） | **OpenAPI operation エラー列挙** | **済（0.1.4）**: 主要 operation に **401 / 400 / 404** を path 列挙。**403** は `components.responses.Forbidden` のみ（path には原則なし）。**409** は stale / 競合の **将来枠**として一部 path のみ（MVP 未広範囲を description で明記）。**job rerun** の 409 は削除（実装整合）。 | 契約可読性・生成クライアント・テスト観点 |
+| P4-3 | **Jobs** | DB に `kind`（任意から必須へ）、レスポンスに `kind`。**`artifact_refs` は維持**しつつトップレベル ref を **additive** で追加可。 | 006 `JobRun` 整合 |
+| P4-4 | **HumanReviewSession** | `table_id` / `pending_questions` を **additive**。既存 MVP フィールドは **維持**（破壊しない）。 | 005/006 整合 |
+| P4-5 | **ConfidenceEvaluation** | `scores`, `explanation` を **additive**。`confidence_score` は非推奨期間後に削除検討。 | 011 完全投影 |
+| P4-6 | **NormalizedDataset** | `rows`/`trace_map` をトップレベルへ（または 006 準拠の別リソース）。`dataset_payload` は **縮小 or 内部用**へ段階移行。 | 003 契約の明確化 |
+| P4-7 | **Suppression GET** | `SuppressionStateResponse` を **正**とし、配列直返しは **deprecated**（`Accept` または `?format=` で切替も可）。 | API 一貫性 |
+
+**非推奨期間（推奨運用）**
+
+- **Deprecated 宣言**: OpenAPI `deprecated: true` + リリースノート。
+- **最低 1 マイナーリリース**: 旧フィールド・旧形式を **引き続き返す**（読み専用）。
+- **次マイナー以降**: 旧形式削除。必要なら **メジャーバージョン**（URL `/v2`）で一括破壊も可。
+
+**互換維持方針**
+
+- **原則 additive**（フィールド追加・optional 化）。削除は deprecated 期間後のみ。
+- **破壊的変更**が必要な場合は **API メジャー**または **専用エンドポイント**（例: `/v1/.../compact` 廃止）。
+
+**クライアント注意点**
+
+- **`metadata_id` を suggestion の主キー**として保持し、`table_id` 空を許容。
+- **ジョブ完了**は `status == SUCCEEDED` かつ **`artifact_refs` 非 null** を推奨（`mvp_pipeline` だけに依存しない）。
+- **状態 enum** は未知値 tolerant。
+- 生成クライアントは **OpenAPI 0.1.8 の path 既定（`TiMvp*`、review answers の **TiMvp request**、**401 は全 operation 列挙**、**409 は §13.1**—**`POST /suggestion-runs` の stale は実装済**、他は主に将来枠）** と **`ErrorResponse`（`error_code`）**、および **400/404** を先に採用し、無印の 006 目標スキーマは **参照・Phase 4 完了後の切替**に回すと安全。
+
+### 18.6 Operation 単位の HTTP エラー（OpenAPI 0.1.4〜0.1.8）
+
+OpenAPI の **各 operation の `responses`** に、次を **原則**として列挙する（詳細は `table-intelligence-openapi-draft.yaml` の該当 path）。
+
+| 方針 | 内容 |
+|------|------|
+| **401** | **全 documented operation** に **`Unauthorized`**（`ErrorResponse`）を path 列挙（**0.1.7**）。文書全体に **`security: [tokenAuth]`** を設定。 |
+| **400** | ボディ検証・整合エラーが起こりうる **POST**（jobs 開始、review session 作成、answers、suggestion run 開始、job rerun の body 等）に **`BadRequest`**。 |
+| **404** | **ID 指定 GET**、**rerun**、**起点リソース不存在がありうる POST**（session 作成・suggestion 開始等）、**workspace 越境**はいずれも **同一の 404 応答**でマスク（`NotFound` / `TI_NOT_FOUND`）。 |
+| **403** | **`Forbidden`** は **components.responses にのみ**残し、**各 operation には原則付けない**（MVP は 401 寄り）。将来、明示禁止が安定した path から **additive** で列挙する。 |
+| **409** | **`Conflict`**（§13.1）。**実装済**: `startSuggestionRun`（**superseded `metadata_id`**）。**将来枠**: `submitReviewAnswers`、`review-sessions` の `rerun`。**GET `listSuggestionCandidates` には付けない**。**job rerun** には付けない。 |
+| **default** | その他は **`ErrorResponseDefault`**（`TI_ERROR` 等）。 |
 
 ---
 
@@ -356,3 +598,16 @@ HTTP ステータスと `error_code` の対応は **OpenAPI 化時に固定**す
 |----|------|------|
 | 0.1 | 2026-04-06 | 初版。実装接続フェーズの API 契約（原則・識別子・ライフサイクル・論理リソース・エラー・015 接続注記）。 |
 | 0.1 追補 | 2026-04-07 | 015 整合: §2.4 に 015 行、§5.1.1 API／DB 列名対応、§15.2 ジョブ系表記、`evaluation_ref` 対応注記。 |
+| 0.1 追補 2 | 2026-04-03 | §16: MVP 実装との契約差分表。OpenAPI 0.1.1 と役割分担を明文化。 |
+| 0.1 追補 3 | 2026-04-03 | §18: OpenAPI 0.1.1 利用者ガイド、フィールド分類、Phase 4 移行計画（P4-1〜P4-7）。 |
+| 0.1 追補 4 | 2026-04-03 | OpenAPI 0.1.2 / P4-2: GET dataset・metadata・evaluation・review-session と session POST 201 を `TiMvp*` schema に明示紐付け。§18・表を更新。 |
+| 0.1 追補 5 | 2026-04-03 | P4-1: `/api/v1/*` エラー `error_code`+`detail`+`errors`。OpenAPI 0.1.3。§16.4・§18 更新。 |
+| 0.1 追補 6 | 2026-04-03 | OpenAPI 0.1.4: 主要 operation に 401/400/404 列挙、`securitySchemes: tokenAuth`、403 は components のみ、409 は将来枠として限定・job rerun から 409 削除。§7.2・§16 優先順位・§18（§18.6・附属行）追補。 |
+| 0.1 追補 7 | 2026-04-03 | OpenAPI 0.1.5: `TiMvpReviewAnswerItem` / `TiMvpSubmitReviewAnswersRequest`、answers POST の requestBody 紐付け。無印 `SubmitReviewAnswersRequest` を 006 向け `deprecated` に整理。§7.2・§10・§16.2・§18 更新。 |
+| 0.1 追補 8 | 2026-04-03 | §13.1: `409 Conflict` の操作別マトリクス（A/B/C/D）、404/400 境界、MVP 未実装の明示。OpenAPI 0.1.6: `GET .../candidates` から 409 削除、`POST /suggestion-runs` に将来 409 追記。§16 優先順位・§18・§18.6 更新。 |
+| 0.1 追補 9 | 2026-04-03 | [GUIDE-TI-table-intelligence-api-errors.md](./GUIDE-TI-table-intelligence-api-errors.md): 利用者向けエラー・HTTP 一覧（1 ページ）。§13 冒頭にリンク。TI 索引に登録。 |
+| 0.1 追補 10 | 2026-04-03 | OpenAPI **0.1.7**: `GET /tables/*`・`GET /metadata/.../review-points` に **401** 追加（ガイドと列挙一致）。§16 優先順位・§18・§18.6・ガイド §1.3・§2.2・§2.5 更新。 |
+| 0.1 追補 11 | 2026-04-03 | **`POST /suggestion-runs`**: superseded `metadata_id` を **409** + `TI_CONFLICT`（`artifact_relation` 判定）。OpenAPI **0.1.8**。§13.1 表・MVP 実装事実を更新。 |
+| 0.1 追補 12 | 2026-04-07 | §9: **`GET .../decision`** を `judgment_result` 永続化と整合（未生成 **404**、`TI_TABLE_UNKNOWN`、011 分離）。OpenAPI `getJudgmentResult` / `JudgmentResult` schema 説明を追補。 |
+| 0.1 追補 13 | 2026-04-07 | §9: **`GET .../read-artifact`** を `table_read_artifact` 永続化と整合（§9 表の連続性修正を含む）。OpenAPI `getTableReadArtifact` / `TableReadArtifact` 説明・example 追補。015 §7.4 MVP 追記。 |
+| 0.1 追補 14 | 2026-04-07 | §9: read-artifact MVP 注記に **rerun 後の旧 table 404 可能性**を追補。015 §7.4: **read-artifact lineage**（`artifact_type=table_read_artifact`）を MVP 実装と整合。 |

@@ -1,0 +1,37 @@
+{
+  "id": "time_series_3x6",
+  "description": "横長・先頭行に日付系ラベル・数値率を抑えて TIME_SERIES 分岐",
+  "table_scope": {
+    "row_min": 0,
+    "col_min": 0,
+    "row_max": 2,
+    "col_max": 5
+  },
+  "cells": {
+    "R0C0": {"r": 0, "c": 0, "raw_display": "KPI"},
+    "R0C1": {"r": 0, "c": 1, "raw_display": "2024-01-15"},
+    "R0C2": {"r": 0, "c": 2, "raw_display": "2024-02-15"},
+    "R0C3": {"r": 0, "c": 3, "raw_display": "2024-03-15"},
+    "R0C4": {"r": 0, "c": 4, "raw_display": "2024-04-15"},
+    "R0C5": {"r": 0, "c": 5, "raw_display": "Note"},
+    "R1C0": {"r": 1, "c": 0, "raw_display": "Revenue"},
+    "R1C1": {"r": 1, "c": 1, "raw_display": "—"},
+    "R1C2": {"r": 1, "c": 2, "raw_display": "—"},
+    "R1C3": {"r": 1, "c": 3, "raw_display": "—"},
+    "R1C4": {"r": 1, "c": 4, "raw_display": "—"},
+    "R1C5": {"r": 1, "c": 5, "raw_display": "ok"},
+    "R2C0": {"r": 2, "c": 0, "raw_display": "Cost"},
+    "R2C1": {"r": 2, "c": 1, "raw_display": "—"},
+    "R2C2": {"r": 2, "c": 2, "raw_display": "—"},
+    "R2C3": {"r": 2, "c": 3, "raw_display": "—"},
+    "R2C4": {"r": 2, "c": 4, "raw_display": "—"},
+    "R2C5": {"r": 2, "c": 5, "raw_display": "ok"}
+  },
+  "merges": [],
+  "expected": {
+    "taxonomy_code": "TI_TABLE_TIME_SERIES",
+    "heuristic_primary": "TI_TABLE_TIME_SERIES",
+    "axis_gates_passed": true,
+    "axis_gate_failures": []
+  }
+}

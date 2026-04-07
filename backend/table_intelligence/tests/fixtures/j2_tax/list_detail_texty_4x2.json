@@ -1,0 +1,27 @@
+{
+  "id": "list_detail_texty_4x2",
+  "description": "4x2 名簿（数値少なめ）→ LIST_DETAIL ヒューリスティクスが CROSSTAB より先に成立しない形状",
+  "table_scope": {
+    "row_min": 0,
+    "col_min": 0,
+    "row_max": 3,
+    "col_max": 1
+  },
+  "cells": {
+    "R0C0": {"r": 0, "c": 0, "raw_display": "Name"},
+    "R0C1": {"r": 0, "c": 1, "raw_display": "Department"},
+    "R1C0": {"r": 1, "c": 0, "raw_display": "Alice"},
+    "R1C1": {"r": 1, "c": 1, "raw_display": "Sales"},
+    "R2C0": {"r": 2, "c": 0, "raw_display": "Bob"},
+    "R2C1": {"r": 2, "c": 1, "raw_display": "Engineering"},
+    "R3C0": {"r": 3, "c": 0, "raw_display": "Carol"},
+    "R3C1": {"r": 3, "c": 1, "raw_display": "HR"}
+  },
+  "merges": [],
+  "expected": {
+    "taxonomy_code": "TI_TABLE_LIST_DETAIL",
+    "heuristic_primary": "TI_TABLE_LIST_DETAIL",
+    "axis_gates_passed": true,
+    "axis_gate_failures": []
+  }
+}

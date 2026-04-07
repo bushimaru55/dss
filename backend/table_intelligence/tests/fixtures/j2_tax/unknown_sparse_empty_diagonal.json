@@ -1,0 +1,17 @@
+{
+  "id": "unknown_sparse_empty_diagonal",
+  "description": "bbox なし・対角のみ空セルで稀疏 3x3 スパン → UNKNOWN（退化）",
+  "table_scope": {},
+  "cells": {
+    "R0C0": {"r": 0, "c": 0, "raw_display": ""},
+    "R1C1": {"r": 1, "c": 1, "raw_display": ""},
+    "R2C2": {"r": 2, "c": 2, "raw_display": ""}
+  },
+  "merges": [],
+  "expected": {
+    "taxonomy_code": "TI_TABLE_UNKNOWN",
+    "heuristic_primary": "TI_TABLE_UNKNOWN",
+    "axis_gates_passed": true,
+    "axis_gate_failures": []
+  }
+}

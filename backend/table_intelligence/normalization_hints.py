@@ -1,0 +1,356 @@
+"""
+003 正規化入力ヒント（002 ``JudgmentResult.evidence`` の J2-ROW / J2-COL を反映）。
+
+004 の dimensions/measures 確定・011 の特徴量化は行わない。
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+# judgment_spike と整合
+RULE_J2_ROW = "J2-ROW-001"
+RULE_J2_COL = "J2-COL-001"
+
+NORMALIZATION_HINTS_SCHEMA_REF = "ti.normalization_hints.v1"
+
+MVP_NORMALIZATION_STUB_SCHEMA_REF = "ti.mvp_normalization_stub.v1"
+MVP_COLUMN_SLOTS_SCHEMA_REF = "ti.mvp_column_slots.v1"
+
+_AGG_ROW_KINDS_SKIP_DATA = frozenset({"ROW_SUBTOTAL", "ROW_GRAND_TOTAL"})
+
+_RKEY = re.compile(r"^R(\d+)C(\d+)$")
+
+
+def _sparse_cells_by_column_in_row(
+    cells: dict[str, Any], row_index: int
+) -> dict[int, dict[str, Any]]:
+    """
+    001 稀疏 ``cells`` のうち ``r == row_index`` のセルを列 index 昇順で返す（観測を改変しない）。
+    """
+    out: dict[int, dict[str, Any]] = {}
+    for key, val in cells.items():
+        if isinstance(val, dict) and "r" in val and "c" in val:
+            try:
+                if int(val["r"]) != row_index:
+                    continue
+                c = int(val["c"])
+            except (TypeError, ValueError):
+                continue
+            out[c] = val
+            continue
+        m = _RKEY.match(str(key))
+        if m and int(m.group(1)) == row_index:
+            c = int(m.group(2))
+            if isinstance(val, dict):
+                out[c] = val
+    return out
+
+
+def _table_column_indices_from_values_keys(rows: list[dict[str, Any]]) -> set[int]:
+    out: set[int] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        vals = row.get("values")
+        if not isinstance(vals, dict):
+            continue
+        for k in vals:
+            if not isinstance(k, str) or not k.startswith("c"):
+                continue
+            tail = k[1:]
+            if tail.isdigit():
+                out.add(int(tail))
+    return out
+
+
+def _build_mvp_column_slots(
+    *,
+    by_col: dict[str, str],
+    rows: list[dict[str, Any]],
+    trace_map: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    MVP ``column_slots[]``: **列カタログ / 参照面**（dimension・measure の意味確定ではない）。
+
+    **Slot 集合（MVP 契約の正本）**:
+    ``set(int(k) for k in by_column_index) ∪ 転記済み rows[].values の cN から復元した列 index``。
+    **taxonomy_code には依存しない**。merges / multi-row header は未解決のまま（上位処理・trace / review へ）。
+
+    - ``hint_from_002``: J2-COL の **候補**ラベル文字列を載せるだけ（確定ではない）。
+    - ``trace_kind_preview`` / ``trace_ref_ids``: ``trace_map`` から拾った **説明用参照**（意味確定ではない）。
+    """
+    indices: set[int] = set()
+    for k in by_col:
+        try:
+            indices.add(int(k))
+        except (TypeError, ValueError):
+            continue
+    indices |= _table_column_indices_from_values_keys(rows)
+
+    slots: list[dict[str, Any]] = []
+    for ci in sorted(indices):
+        kinds: list[str] = []
+        refs: list[str] = []
+        for t in trace_map:
+            if not isinstance(t, dict):
+                continue
+            try:
+                tic = t.get("table_column_index")
+                if tic is None or int(tic) != ci:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            kk = t.get("kind")
+            if isinstance(kk, str) and kk not in kinds:
+                kinds.append(kk)
+            tr = t.get("trace_ref")
+            if isinstance(tr, str) and tr and tr not in refs:
+                refs.append(tr)
+        kinds.sort()
+        refs.sort()
+
+        slot: dict[str, Any] = {
+            "slot_id": f"col_{ci}",
+            "table_column_index": ci,
+            "values_key": f"c{ci}",
+            "semantic_lock_in": False,
+        }
+        hk = by_col.get(str(ci))
+        if hk is not None:
+            slot["hint_from_002"] = hk
+        if kinds:
+            slot["trace_kind_preview"] = kinds
+        if refs:
+            slot["trace_ref_ids"] = refs
+        slots.append(slot)
+    return slots
+
+
+def extract_normalization_input_hints_from_judgment_evidence(
+    evidence: list[Any] | None,
+) -> dict[str, Any] | None:
+    """
+    ``evidence[]`` から J2-ROW / J2-COL の ``details`` を集約し、
+    ``NormalizedDataset.dataset_payload`` 用のヒント dict を返す。
+
+    該当が無ければ ``None``。
+    """
+    if not evidence:
+        return None
+    by_row: dict[str, str] | None = None
+    by_col: dict[str, str] | None = None
+    primary_labels_schema: str | None = None
+    intent: str | None = None
+
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        rid = item.get("rule_id")
+        details = item.get("details")
+        if not isinstance(details, dict):
+            continue
+        if primary_labels_schema is None:
+            primary_labels_schema = details.get("primary_labels_schema")
+        if intent is None:
+            intent = details.get("intent")
+        if rid == RULE_J2_ROW:
+            br = details.get("by_row_index")
+            if isinstance(br, dict):
+                by_row = {str(k): str(v) for k, v in br.items()}
+        elif rid == RULE_J2_COL:
+            bc = details.get("by_column_index")
+            if isinstance(bc, dict):
+                by_col = {str(k): str(v) for k, v in bc.items()}
+
+    if by_row is None and by_col is None:
+        return None
+
+    return {
+        "schema_ref": NORMALIZATION_HINTS_SCHEMA_REF,
+        "source": "002_judgment_evidence",
+        "intent": intent
+        or "normalization_input_hints_not_semantic_lock_in",
+        "rule_ids": [RULE_J2_ROW, RULE_J2_COL],
+        "primary_labels_schema": primary_labels_schema,
+        "by_row_index": by_row or {},
+        "by_column_index": by_col or {},
+    }
+
+
+def merge_hints_into_dataset_payload(
+    payload: dict[str, Any],
+    hints: dict[str, Any],
+) -> dict[str, Any]:
+    """既存 ``dataset_payload`` を壊さず ``normalization_input_hints`` を上書きマージ。"""
+    out = dict(payload)
+    out["normalization_input_hints"] = hints
+    return out
+
+
+def read_normalization_input_hints_from_dataset_payload(
+    dataset_payload: dict[str, Any],
+) -> dict[str, Any] | None:
+    """
+    ``dataset_payload.normalization_input_hints`` を返す（002 ``JudgmentResult.evidence``
+    由来で materialize が載せたオブジェクトを 003 スタブが読む入口）。
+    """
+    h = dataset_payload.get("normalization_input_hints")
+    return h if isinstance(h, dict) else None
+
+
+def build_mvp_rows_and_trace_map_from_hints(
+    hints: dict[str, Any],
+    *,
+    table: Any | None = None,
+    cells: dict[str, Any] | None = None,
+) -> tuple[
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any],
+    list[dict[str, Any]],
+]:
+    """
+    ``normalization_input_hints`` を読み、MVP 用の ``rows[]`` / ``trace_map`` / ``column_slots[]`` を生成する。
+
+    - 行: ``ROW_HEADER_BAND`` → ``header_band_skipped``。``ROW_NOTE`` / ``ROW_NOTE_CANDIDATE`` → ``note_candidate``。
+      集計行は ``skipped_row_candidate``。
+    - 列: ``COL_ATTRIBUTE`` / ``COL_ATTRIBUTE_CANDIDATE`` → ``attribute_column_candidate``。
+      ``COL_MEASURE`` / ``COL_MEASURE_CANDIDATE`` → ``measure_column_candidate``。その他は ``column_role_hint``。
+    - データ行: ``cells`` があれば同じ ``table_row_index`` の 001 観測を ``values[\"c{N}\"]`` に **転記**（型確定・意味確定ではない）。
+    - ``column_slots``: **契約どおり** ``by_column_index`` の列キーと ``rows[].values`` の ``cN`` 列の**和集合**（taxonomy 非依存）。
+      **``values`` のキーは当面 ``cN`` のまま**（論理列 ID への置換はしない）。
+    いずれも **004 dimensions/measures 確定ではない**（``semantic_lock_in: false``）。
+    """
+    by_row: dict[str, str] = dict(hints.get("by_row_index") or {})
+    by_col: dict[str, str] = dict(hints.get("by_column_index") or {})
+
+    row_indices: list[int]
+    if by_row:
+        row_indices = sorted(int(k) for k in by_row.keys())
+    else:
+        rm = getattr(table, "row_min", None) if table is not None else None
+        rM = getattr(table, "row_max", None) if table is not None else None
+        if rm is not None and rM is not None:
+            row_indices = list(range(int(rm), int(rM) + 1))
+        else:
+            row_indices = []
+
+    rows: list[dict[str, Any]] = []
+    trace_map: list[dict[str, Any]] = []
+    skipped = 0
+    cell_src = cells if isinstance(cells, dict) else {}
+    transcribed = 0
+
+    for r in row_indices:
+        kind = by_row.get(str(r), "ROW_UNKNOWN")
+        if kind == "ROW_HEADER_BAND":
+            skipped += 1
+            trace_map.append(
+                {
+                    "trace_ref": f"mvp-header-band-{r}",
+                    "kind": "header_band_skipped",
+                    "table_row_index": r,
+                    "row_kind_hint": kind,
+                    "semantic_lock_in": False,
+                    "note": "002 J2-ROW; not final header classification",
+                }
+            )
+            continue
+        if kind in ("ROW_NOTE", "ROW_NOTE_CANDIDATE"):
+            skipped += 1
+            trace_map.append(
+                {
+                    "trace_ref": f"mvp-note-candidate-{r}",
+                    "kind": "note_candidate",
+                    "table_row_index": r,
+                    "row_kind_hint": kind,
+                    "semantic_lock_in": False,
+                    "note": "002 J2-ROW; note row candidate not data body",
+                }
+            )
+            continue
+        if kind in _AGG_ROW_KINDS_SKIP_DATA:
+            skipped += 1
+            trace_map.append(
+                {
+                    "trace_ref": f"mvp-skip-row-{r}",
+                    "kind": "skipped_row_candidate",
+                    "table_row_index": r,
+                    "row_kind_hint": kind,
+                    "semantic_lock_in": False,
+                    "note": "002 J2-ROW; aggregate row excluded from data rows",
+                }
+            )
+            continue
+        logical_idx = len(rows)
+        vals: dict[str, Any] = {}
+        if cell_src:
+            by_c = _sparse_cells_by_column_in_row(cell_src, r)
+            for ci in sorted(by_c.keys()):
+                cell = by_c[ci]
+                raw = cell.get("raw_display")
+                vals[f"c{ci}"] = "" if raw is None else str(raw)
+                transcribed += 1
+                trace_map.append(
+                    {
+                        "trace_ref": f"mvp-tx-r{r}c{ci}",
+                        "kind": "cell_value_transcribed",
+                        "table_row_index": r,
+                        "table_column_index": ci,
+                        "logical_row_index": logical_idx,
+                        "values_key": f"c{ci}",
+                        "semantic_lock_in": False,
+                        "note": (
+                            "001 TableReadArtifact.cells raw_display transcribed; "
+                            "not typed normalization or measure semantics"
+                        ),
+                    }
+                )
+        rows.append(
+            {
+                "logical_row_index": logical_idx,
+                "table_row_index": r,
+                "values": vals,
+                "mvp_stub": True,
+                "normalization_hint": {
+                    "from_002_row_kind": kind,
+                    "semantic_lock_in": False,
+                },
+            }
+        )
+
+    for c_str in sorted(by_col.keys(), key=lambda x: int(x)):
+        ckind = by_col[c_str]
+        ci = int(c_str)
+        if ckind in ("COL_ATTRIBUTE", "COL_ATTRIBUTE_CANDIDATE"):
+            tkind = "attribute_column_candidate"
+        elif ckind in ("COL_MEASURE", "COL_MEASURE_CANDIDATE"):
+            tkind = "measure_column_candidate"
+        else:
+            tkind = "column_role_hint"
+        trace_map.append(
+            {
+                "trace_ref": f"mvp-col-{tkind}-{c_str}",
+                "kind": tkind,
+                "table_column_index": ci,
+                "column_role_hint": ckind,
+                "semantic_lock_in": False,
+                "note": "002 J2-COL; not dimension/measure lock-in",
+            }
+        )
+
+    # column_slots 集合 = by_column_index キー ∪ データ行に転記した cN の列（契約正本・taxonomy 非参照）
+    column_slots = _build_mvp_column_slots(by_col=by_col, rows=rows, trace_map=trace_map)
+
+    meta = {
+        "schema_ref": MVP_NORMALIZATION_STUB_SCHEMA_REF,
+        "column_slots_schema_ref": MVP_COLUMN_SLOTS_SCHEMA_REF,
+        "data_row_count": len(rows),
+        "skipped_row_trace_count": skipped,
+        "column_hint_trace_count": len(by_col),
+        "transcribed_cell_trace_count": transcribed,
+        "column_slot_count": len(column_slots),
+    }
+    return rows, trace_map, meta, column_slots

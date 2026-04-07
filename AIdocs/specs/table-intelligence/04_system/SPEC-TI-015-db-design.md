@@ -165,6 +165,12 @@ depends_on:
 | latest／superseded | **対象外**（ジョブは **履歴として追加**され、キャンセルは状態で表す） |
 | 備考 | **`evaluation_ref`／`suggestion_run_ref`** は 006 に合わせ **列として重複保持**してよい（ジョブ完了時のスナップショット）。値は **`evaluation_id`／`suggestion_run_id` と同じ文字列**。 |
 
+#### 7.1.1 API 実装メモ（MVP と 014 / OpenAPI の整合）
+
+- **`kind` 列**: 006 `JobRun.kind` に相当する列は **未導入でもよい**（API は `current_stage` 文字列と `artifact_refs` で段階・成果を表す MVP がありうる）。
+- **`request_payload`（JSON）**: 原本束ね以外に、**`mvp_pipeline`（完了時の ref スナップショット）**、**rerun 由来の `lineage`（旧→新の監査入力）** を格納しうる。詳細は **SPEC-TI-014 §16** および **OpenAPI 0.1.1** の `TiMvpJobDetail` / `StartAnalysisJobRequest` 記述と揃える。
+- **`idempotency_key`**: 014 §4.5 / OpenAPI ヘッダ `Idempotency-Key` と **部分一意 `(workspace_id, idempotency_key)`** で対応（本表の一意制約候補と一致）。
+
 ### 7.2 `job_stage_run`
 
 | 項目 | 内容 |
@@ -196,6 +202,7 @@ depends_on:
 | 主要カラム | `table_id` FK, `artifact_version`, `is_latest`, `superseded_by`, `cells`／`merges`／`parse_warnings` の **JSON または外部 BLOB 参照** |
 | 一意制約候補 | `(table_id, artifact_version)` |
 | JSON | `cells` 等 **大容量は JSON またはオブジェクトストレージキー**（実装選択） |
+| **MVP 実装** | 同期 `materialize` が `TableScope` 作成直後に **001 本格前のスタブ**を 1 行 INSERT（稀疏 `cells`、`merges`/`parse_warnings` は空配列から）。`GET /tables/.../read-artifact` は **`is_latest` 行**を読む。**job / review rerun** で新 `table_id` が立つとき、旧 table 上の latest を **`is_latest=False`** に落とし、旧→新 `artifact_id` を **`artifact_relation`**（`TI_*_SUPERSEDES`・`artifact_type=table_read_artifact`）に載せる（001 JSON は行 UPDATE せず世代で表す）。 |
 
 ### 7.5 `judgment_result`
 
@@ -206,6 +213,7 @@ depends_on:
 | 主要カラム | `table_id` FK, **`decision`**（002 enum）, `taxonomy_code`, `artifact_version`, `is_latest`, `superseded_by` |
 | **禁止** | **`decision_recommendation` を本テーブルに持たせない**（011 は `confidence_evaluation` 側）。 |
 | JSON | `evidence`（006 配列。詳細は JSON） |
+| **MVP 実装** | 同期 `materialize` が **002 本格前のスタブ**として 1 行 INSERT（`decision`・`taxonomy_code`・非空 `evidence`）。`GET /tables/.../decision` は **`is_latest` 行**を読む。**job / review rerun** で新 `table_id` が立つとき、旧 table 上の latest を **`is_latest=False`** に落とし、旧→新 `judgment_id` を **`artifact_relation`**（`TI_*_SUPERSEDES`・`artifact_type=judgment_result`）に載せる。 |
 
 ### 7.6 `normalized_dataset`
 
@@ -370,7 +378,7 @@ depends_on:
 ### 10.2 stale reference
 
 - クライアントが **旧 `metadata_id`** で suggestion を要求した場合、**DB 上その行は `is_latest = false`**。
-- API（014）は **409／業務エラー**（012）で **最新 ID を指示**（014 §13 と整合）。
+- API（014）は **409／業務エラー**（012）で **最新 ID を指示**（014 §13 と整合）。**操作別の分類・MVP 実装差**は **014 §13.1** を正とする。
 
 ### 10.3 `artifact_relation` の必要性
 

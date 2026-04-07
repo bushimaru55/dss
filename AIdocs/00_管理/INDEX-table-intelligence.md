@@ -25,6 +25,7 @@
 - [実装前レビュー観点整理](実装前レビュー観点整理_table-intelligence.md)（実装着手前のチェックリスト・アジェンダ、`0.1`）
 - [API × DTO × DB 対応表](API_DTO_DB対応表_table-intelligence.md)（014 / 006 / 015 / OpenAPI / DDL の横断ブレ止め、`0.1`）
 - [OpenAPI 叩き台（draft）](../specs/table-intelligence/04_system/openapi/table-intelligence-openapi-draft.yaml)（SPEC-TI-014＋006 の機械可読ドラフト、`0.1.0-draft`）
+- [Table Intelligence API — 利用者向けエラー一覧](../specs/table-intelligence/04_system/GUIDE-TI-table-intelligence-api-errors.md)（主要 operation の成功/400/401/404/409・404 マスク・将来枠、`0.1`）
 - [DDL 叩き台（draft）](../specs/table-intelligence/04_system/sql/table-intelligence-ddl-draft.sql)（SPEC-TI-015 ベースの PostgreSQL 初期 DDL、`0.1.0-draft`）
 - [表解析仕様群_最終整合レビュー完了報告.md](表解析仕様群_最終整合レビュー完了報告.md)（仕様フェーズの節目・引き継ぎ）
 - [仕様書作成計画.md](仕様書作成計画.md)

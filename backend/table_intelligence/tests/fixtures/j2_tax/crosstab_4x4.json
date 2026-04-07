@@ -1,0 +1,35 @@
+{
+  "id": "crosstab_4x4",
+  "description": "行列表頭＋内側数値の 4x4 で CROSSTAB ヒューリスティクスと 009 ゲート通過",
+  "table_scope": {
+    "row_min": 0,
+    "col_min": 0,
+    "row_max": 3,
+    "col_max": 3
+  },
+  "cells": {
+    "R0C0": {"r": 0, "c": 0, "raw_display": ""},
+    "R0C1": {"r": 0, "c": 1, "raw_display": "Q1"},
+    "R0C2": {"r": 0, "c": 2, "raw_display": "Q2"},
+    "R0C3": {"r": 0, "c": 3, "raw_display": "Q3"},
+    "R1C0": {"r": 1, "c": 0, "raw_display": "North"},
+    "R1C1": {"r": 1, "c": 1, "raw_display": "111"},
+    "R1C2": {"r": 1, "c": 2, "raw_display": "112"},
+    "R1C3": {"r": 1, "c": 3, "raw_display": "113"},
+    "R2C0": {"r": 2, "c": 0, "raw_display": "South"},
+    "R2C1": {"r": 2, "c": 1, "raw_display": "121"},
+    "R2C2": {"r": 2, "c": 2, "raw_display": "122"},
+    "R2C3": {"r": 2, "c": 3, "raw_display": "123"},
+    "R3C0": {"r": 3, "c": 0, "raw_display": "East"},
+    "R3C1": {"r": 3, "c": 1, "raw_display": "131"},
+    "R3C2": {"r": 3, "c": 2, "raw_display": "132"},
+    "R3C3": {"r": 3, "c": 3, "raw_display": "133"}
+  },
+  "merges": [],
+  "expected": {
+    "taxonomy_code": "TI_TABLE_CROSSTAB",
+    "heuristic_primary": "TI_TABLE_CROSSTAB",
+    "axis_gates_passed": true,
+    "axis_gate_failures": []
+  }
+}

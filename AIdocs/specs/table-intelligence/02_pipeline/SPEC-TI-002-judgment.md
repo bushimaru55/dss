@@ -2,7 +2,7 @@
 id: SPEC-TI-002
 title: 判定ロジック仕様書
 status: Draft
-version: 0.2
+version: 0.3.3
 owners: []
 last_updated: 2026-04-08
 depends_on: [SPEC-TI-001, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
@@ -478,9 +478,52 @@ depends_on: [SPEC-TI-001, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 
 ---
 
+## MVP 実装スパイク（backend 整合・2026-04）
+
+本節は **002 全ルールの完成**ではなく、`JudgmentResult` を **根拠付き**に引き上げるための **最小境界**をロックする。
+
+### P0 で `REJECT` に寄せる条件（最小）
+
+| ID | 条件 |
+|----|------|
+| J2-P0-001 | `cells` が空（稀疏表に観測セルが 1 つも無い） |
+| J2-P0-002 | `TableScope` の bbox が反転（`row_max < row_min` または `col_max < col_min`） |
+| J2-P0-003 | いずれかのセル座標が bbox 外（0-based inclusive で検査） |
+| J2-P0-004 | `parse_warnings` に **`severity: error`**、または code が `TI_READ_NO_TABLE_CANDIDATE` / `TI_READ_ARTIFACT_INVALID` / `TI_READ_BBOX_INVALID` のいずれか |
+
+P0 発火時は **`taxonomy_code = TI_TABLE_UNKNOWN`**（006）、`decision = REJECT`。012／HTTP の運用対応は別途。
+
+### evidence 最小形（スパイク）
+
+各要素は少なくとも次を含む: **`rule_id`**, **`conclusion`**, **`targets`**（矩形またはセル参照・空配列可）, **`refs_parse_warnings`**（001 の **index** 列）, **`details`**。
+
+- **`details.judge_profile_id`**: 実装バージョン識別子（例: `ti.judge.spike.v1`）。006 の `judge_profile_id` トップレベル化は **MINOR 見送り**でよい。
+- **`refs_parse_warnings`**: `parse_warnings` が空なら `[]`。非空なら **全要素を index で参照**する `J2-WARN-001` を付与してよい。
+
+### 薄い J2-TAX（スパイク）
+
+P0 非該当かつ `REJECT` でない場合、観測特徴（行列スパン、数値／日付らしさ、先頭行の文字比率等）から **単一の `taxonomy_code`** を推定。自信が薄いときは **`TI_TABLE_UNKNOWN`** とし、**`details.alternate_taxonomies[]`** に副候補を閉じる（002 Draft 0.2 と整合）。
+
+**v1（`ti.judge.spike.v1`）**: [SPEC-TI-009](../01_foundation/SPEC-TI-009-table-taxonomy.md) 各型の定義から **機械判定可能な最小の「軸」**（例: クロス表の行軸・列軸ラベル数、交差部の数値、時系列の列上日付、キー値の横幅、帳票の結合／充填率、ピボット様式キーワード）を **`details.taxonomy_009.axes_observed`** に記録し、仮分類に対して **軸ゲート**を適用する。ゲート不通過時は **`TI_TABLE_UNKNOWN`** へ落とすか、代替候補のうちゲート通過の型へ **昇格**してよい（実装方針）。
+
+### 行／列一次ラベル（J2-ROW / J2-COL スパイク）
+
+P0 非該当時、**本文 §行種別／列種別**の暫定 enum を、001 の **稀疏セル＋bbox** だけから **候補**として付与する。`evidence[]` に **`J2-ROW-001`**（`details.by_row_index`）と **`J2-COL-001`**（`details.by_column_index`）を載せる。キーは **0-based 行／列インデックスの文字列**。**`details.primary_labels_schema`**（例: `ti.judgment.primary_labels.v1`）でスキーマを識別する。MVP 実装では 003 への誤確定を避けるため、値に **`ROW_NOTE_CANDIDATE`**、**`COL_ATTRIBUTE_CANDIDATE`**、**`COL_MEASURE_CANDIDATE`** 等の接尾辞を付けうる（§本文 enum との対応は実装コメントで明示）。
+
+- **003 向け**: 正規化の経路選択・行の除外候補の**ヒント**として消費しうる。**確定の論理行・`trace_map`・grain は 003 正本**。
+- **010 非侵襲**: `HeadingTree` や `cell_bindings` は作らない。見出しの**採否確定**は 010／後続 002 の責務。
+- **004 非侵襲**: `dimensions`／`measures` の意味確定には**しない**（`details.intent` で「semantic lock-in でない」と明示してよい）。
+
+---
+
+
 ## 変更履歴
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.3.3 | 2026-04-08 | J2-ROW/J2-COL MVP: `*_CANDIDATE` 値を 003 向けに付けうる旨をスパイク節に追記。 |
+| 0.3.2 | 2026-04-08 | J2-ROW-001 / J2-COL-001: `by_row_index` / `by_column_index`（003 入力候補、`primary_labels_schema`）。 |
+| 0.3.1 | 2026-04-08 | J2-TAX v1: 009 軸観測・軸ゲート（`ti.judge.spike.v1`）をスパイク節に追記。 |
+| 0.3 | 2026-04-08 | MVP 実装スパイク節: P0 境界、evidence 最小形、`judge_profile_id` を `details` に載せる方針、薄い J2-TAX。 |
 | 0.2 | 2026-04-05 | taxonomy 単一ラベル＋`details` 副候補、見出し境界・多段見出し・疑似見出し・タイトル昇降、行／列衝突優先、`REJECT`／UNKNOWN+要確認境界、confidence_hint／drivers、単位適用範囲仮ラベル。 |
 | 0.1 | 2026-04-04 | 初版本文。001 入力・009/010 接続・evidence／parse_warnings・1×N 採否・委譲。 |

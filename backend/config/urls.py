@@ -22,6 +22,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", health),
     path("api/auth/token/", authtoken_views.obtain_auth_token),
+    path("api/v1/", include("table_intelligence.urls")),
     path("api/", include(router.urls)),
     path("api/chat/ask", ChatAskView.as_view()),
     path("api/chat/ask/<int:run_id>", ChatAskDetailView.as_view()),

@@ -2,9 +2,9 @@
 id: SPEC-TI-006
 title: 入出力データ仕様書
 status: Draft
-version: 0.5
+version: 0.5.1
 owners: []
-last_updated: 2026-04-21
+last_updated: 2026-04-03
 depends_on: [SPEC-TI-009, SPEC-TI-010]
 ---
 
@@ -212,6 +212,7 @@ depends_on: [SPEC-TI-009, SPEC-TI-010]
 | `note_blocks[]` | 注記ブロック。 |
 | `type_normalization_notes[]` | 型正規化の注記。 |
 | `unit_application[]` | 単位適用のスコープ。 |
+| `column_slots[]` | 列スロットカタログ（`cN` と `table_column_index` の橋渡し・003 補助、[SPEC-TI-003](../02_pipeline/SPEC-TI-003-normalization.md)）。 |
 
 #### 5.7.2 副次メタの要素型方向・配列必須／任意（Step 2-B・Phase 4 第1版レベル）
 
@@ -225,6 +226,7 @@ depends_on: [SPEC-TI-009, SPEC-TI-010]
 | `note_blocks[]` | **任意** | **脚注・注記ブロック**（表外テキストの塊） | **`text`**、**`anchor`**（幾何 `CellRangeInclusive` または論理アンカーのいずれか） |
 | `type_normalization_notes[]` | **任意** | **型正規化**（桁落ち・丸め・解釈）に関する説明 | **`field_path`**（論理列／measure 上のパス）、**`note`**（短文または構造化オブジェクトのいずれか） |
 | `unit_application[]` | **任意** | **単位**がどの論理列・どの範囲に適用されるか | **`target`**（論理列 ID または measure キー）、**`unit`**（単位表現文字列またはコード）、**`scope`**（行部分集合・**省略可**） |
+| `column_slots[]` | **任意** | **`rows[].values` の `cN` と `table_column_index` の対応**・002 列ヒント・003 trace 参照の橋渡し（[SPEC-TI-003](../02_pipeline/SPEC-TI-003-normalization.md)） | **`slot_id`**、**`table_column_index`**、**`values_key`**。任意: **`hint_from_002`**, **`trace_ref_ids`**, **`trace_kind_preview`**。**意味確定は 004 の別ステップ** |
 
 ### 5.8 AnalysisMetadata
 
@@ -433,6 +435,7 @@ depends_on: [SPEC-TI-009, SPEC-TI-010]
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.5.1 | 2026-04-03 | §5.7.1／§5.7.2 に `column_slots[]`（003 MVP・`cN` 橋渡し、004 非確定）を追記。 |
 | 0.5 | 2026-04-21 | Step 3: §5.11 `SuggestionSet`・§5.11.1 候補要素、`JobRun` の `evaluation_ref`／`suggestion_run_ref`（§5.12）、§5.0 014／015 意味リンク、§1 Step 1〜3 整理、§2 に 013 行・014／015 行拡張、§3.2 ID 行拡張。`JobRun` 節番号 §5.12 へ繰下げ。 |
 | 0.4 | 2026-04-03 | Step 2-B: §5.7.2 副次配列の要素型・必須／任意、§5.8.1 `review_points[]` 整理（`priority`／`severity` 暫定方針）、§5.9.1 `answers[]`、§6 禁止遷移下書き、§5.10 `ConfidenceEvaluation`、§5.11 `JobRun`、§2 に 011 行。 |
 | 0.3 | 2026-04-20 | Step 2-A: `evidence[]` 枠組み（§5.6.1）、`NormalizedDataset` 副次メタ候補（§5.7.1）、`review_points[]` 最小構造（§5.8.1）、`human_review_session_state` 草案（§6）。§5.8 に `review_points[]` 行（任意）、§5.9 `state` 説明更新。 |

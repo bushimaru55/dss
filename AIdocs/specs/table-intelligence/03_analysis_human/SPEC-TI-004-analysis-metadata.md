@@ -2,9 +2,9 @@
 id: SPEC-TI-004
 title: 分析メタデータ仕様書
 status: Draft
-version: 0.2
+version: 0.2.3
 owners: []
-last_updated: 2026-04-19
+last_updated: 2026-04-03
 depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-005, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010, SPEC-TI-011, SPEC-TI-013]
 ---
 
@@ -97,6 +97,7 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-005, SPEC-TI-006, SP
 
 - **`NormalizedDataset`**（006 §5.7、[SPEC-TI-003](../02_pipeline/SPEC-TI-003-normalization.md) 準拠）  
   - `dataset_id`, `table_id`, `rows[]`, `trace_map`  
+  - **任意** `dataset_payload.column_slots[]` — `rows[].values` の **`cN` と表列 index の対応**など 003 補助。**dimension／measure の確定入力ではない**（§dimensions／§measures との境界は 003／006 を参照）。  
 - 各論理行の **key／value／metadata／source trace reference** の区分は **003 の定義に従う**。
 
 ### 補助入力（必須参照）
@@ -113,6 +114,14 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-005, SPEC-TI-006, SP
 ### 主入力に含めないもの
 
 - **`TableReadArtifact` を 004 の主入力としない**。セル値・OCR 結果の再解釈は 001 の責務。004 は **003 出力と 002 参照**からメタを組み立てる。
+
+### MVP 実装スパイク（003→004「参照のみ」）
+
+本番の dimension／measure／grain 確定の前に、**003 が `dataset_payload` に載せた痕跡を 004 が読んだことを検証可能にする**ための最小接続を許容する。
+
+- **読む対象**（[SPEC-TI-003](../02_pipeline/SPEC-TI-003-normalization.md) の MVP 出力に準拠）: `normalization_input_hints`（002 evidence 由来のヒント）→ **`trace_map`**（003 の実行痕跡）→ **`rows[]`**（先頭行の `values` キー名など**要約プレビュー**に限る。セル値の再解釈はしない）→ 任意の **`column_slots[]`**（003 列カタログ。**`cN` と `table_column_index` の対照**。004 は **slot を `dimensions`／`measures` に昇格しない**）。
+- **書き込み**: `AnalysisMetadata.decision` に観測サマリ（実装例: `mvp_dataset_input_observation`、`schema_ref`: `ti.mvp_004_dataset_input_observation.v1`）。**`column_slots_summary`** に例えば次を載せうる: **`read`**、**`entry_count`**、**`hints_from_002_present_count`**、**`slot_id_values_key_preview`**（先頭数件の `slot_id`／`values_key`／`has_hint_from_002`）。**`decision` 内の 004 本番ブロック（例: `block`）は置き換えない**。`review_points[]` に **参照のみ**を示す論点（例: `004-mvp-dataset-inputs-observed`、**`column_slots` が非空のとき** `004-mvp-column-slots-referenced`）を追加しうる。
+- **禁止**: 本スパイクは **`semantic_lock_in` を付けない**（意味確定とみなさない）。**011 への特徴量化・013 への候補生成ロジックは追加しない**。`JudgmentResult` を 004 が**再読して上書き**する処理は本スパイクの範囲外（002 は引き続き補助入力の正本）。
 
 ---
 
@@ -361,5 +370,8 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-005, SPEC-TI-006, SP
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.2.3 | 2026-04-03 | MVP 観測に `column_slots_summary` と `004-mvp-column-slots-referenced` を追記（参照のみ・意味確定なし）。 |
+| 0.2.2 | 2026-04-03 | 主入力に任意 `column_slots[]` を追記（`cN` 橋渡し・004 非確定）。MVP 観測節に `column_slots` の位置づけを補足。 |
+| 0.2.1 | 2026-04-03 | MVP: `dataset_payload` の `normalization_input_hints`／`trace_map`／`rows` を参照入力として要約し `decision`／`review_points` に観測痕跡を残すスパイク（意味確定なし）。 |
 | 0.2 | 2026-04-19 | 005 への標準経路（001→002→003→004→005）、暫定トリガの位置づけ、`trace_refs` の 0-based inclusive と論理参照の区別。 |
 | 0.1 | 2026-04-18 | Draft 初版本文。指定 25 章構成。003 主入力・002 補助・001 非主入力、軸／grain／集計／review／005・011・013 引き継ぎ、構造方針。 |
