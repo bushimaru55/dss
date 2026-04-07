@@ -2,7 +2,7 @@
 id: SPEC-TI-002
 title: 判定ロジック仕様書
 status: Draft
-version: 0.3.4
+version: 0.3.5
 owners: []
 last_updated: 2026-04-07
 depends_on: [SPEC-TI-001, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
@@ -69,6 +69,12 @@ depends_on: [SPEC-TI-001, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 | SPEC-TI-004 | `grain`・dimensions／measures の**意味正本**（002 は候補提示に留める）。 |
 | SPEC-TI-005 | 人確認。002 は**曖昧性・evidence・taxonomy＝UNKNOWN 等**を渡す。 |
 | SPEC-TI-011 | 信頼度。002 は**スコア式を固定しない**。evidence を入力として渡せるよう構造化する。 |
+
+### 003 正規化への受け渡し（MVP 境界）
+
+- J2-ROW / J2-COL の結果は **`dataset_payload.normalization_input_hints`** に畳んだ**候補ヒント**として 003 に渡す。**候補であり確定ではない**（意味確定済み情報として 003 に渡さない）。  
+- 003 の主入力は **`normalization_input_hints`**。行／列 index ベースのヒントと 001 の **`raw_display` 転記**、**`column_slots` の参照面**をそのまま使ってよい範囲とする（003 は semantic lock-in しない）。  
+- taxonomy の最終意味、dimension／measure、業務意味、merges／多段見出しの解決は MVP 外。不一致・曖昧さは **`trace_map`**・**review**（005）・上位仕様へ委譲する。
 
 ---
 
@@ -528,6 +534,7 @@ P0 非該当時、**本文 §行種別／列種別**の暫定 enum を、001 の
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.3.5 | 2026-04-07 | §関連仕様書に「003 正規化への受け渡し（MVP 境界）」を追記（normalization_input_hints／候補性／委譲先）。 |
 | 0.3.4 | 2026-04-07 | 補足メモ「003 に引き継ぐ事項」に 002→003 接続境界（ヒント／畳み込み／確定しない範囲／委譲）を最小追記。 |
 | 0.3.3 | 2026-04-08 | J2-ROW/J2-COL MVP: `*_CANDIDATE` 値を 003 向けに付けうる旨をスパイク節に追記。 |
 | 0.3.2 | 2026-04-08 | J2-ROW-001 / J2-COL-001: `by_row_index` / `by_column_index`（003 入力候補、`primary_labels_schema`）。 |

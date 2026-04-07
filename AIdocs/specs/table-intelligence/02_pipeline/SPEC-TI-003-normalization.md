@@ -2,7 +2,7 @@
 id: SPEC-TI-003
 title: 変換・正規化仕様書
 status: Draft
-version: 0.2.5
+version: 0.2.7
 owners: []
 last_updated: 2026-04-07
 depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
@@ -82,12 +82,19 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 | SPEC-TI-011 | **信頼度**。003 は不確実性を**特徴量として**出力に載せうる。 |
 | SPEC-TI-013 | **分析候補生成**。003 の論理表現を入力とするが、生成ロジックは 013 正本。 |
 
-### [SPEC-TI-002](SPEC-TI-002-judgment.md) との接続境界（要約）
+### 002 判定結果との接続境界（MVP）
 
-- **002 が 003 に渡すもの**: `evidence[]` の **`J2-ROW-001` / `J2-COL-001`**（`by_row_index` / `by_column_index`）。MVP では materialize がこれを **`dataset_payload.normalization_input_hints`** に**畳んで**参照させる。**候補ヒントであり、一次判定の確定ではない**。  
-- **003 が用いてよいもの（002 由来）**: **行／列 index ベース**のヒント、（001 と併せ）**`raw_display` の転記**、**`column_slots` の参照面**。  
-- **003 が単独で確定しないもの**: **taxonomy の最終意味**、**dimension／measure**、**業務意味**、**merges／多段見出しの解決**（§入力の理想形・経路選択は別途；MVP は §MVP 実装接続）。  
-- **委譲**: **不一致・曖昧さを 003 が抱え込まず**、`trace_map`・**レビュー**（[SPEC-TI-005](../03_analysis_human/SPEC-TI-005-human-review-flow.md)）・**上位仕様**へ逃がす。002 側の整理は **[SPEC-TI-002](SPEC-TI-002-judgment.md)** の「003 に引き継ぐ事項」を参照。
+- **002 が 003 に渡すもの**: J2-ROW / J2-COL を **`dataset_payload.normalization_input_hints`** に畳んだ**候補ヒント**（`by_row_index` / `by_column_index` 由来）。**候補であり確定ではない**。  
+- **003 がそのまま用いてよいもの**: **行／列 index ベース**のヒント、001 の **`raw_display` 転記**、**`column_slots` の参照面**（003 は semantic lock-in しない）。  
+- **003 がまだ確定しないもの**: **taxonomy の最終意味**、**dimension／measure**、**業務意味**、**merges／多段見出しの解決**（理想形の経路選択は §入力ほか；契約の詳細は §MVP 実装接続）。  
+- **曖昧さの逃がし先**: **`trace_map[]`**、**review**（[SPEC-TI-005](../03_analysis_human/SPEC-TI-005-human-review-flow.md)）、**上位仕様**。002 側の整理は **[SPEC-TI-002](SPEC-TI-002-judgment.md)** の「003 正規化への受け渡し（MVP 境界）」を参照。
+
+### 004 分析メタデータへの受け渡し（MVP 境界）
+
+- **`rows[]`** / **`trace_map[]`** / **`column_slots[]`** は **[SPEC-TI-004](../03_analysis_human/SPEC-TI-004-analysis-metadata.md)** の**入力前提**となる。ただし 003 出力を **「意味確定済みデータ」とはみなさない**（**候補**・**参照面**）。  
+- **003** は **転記・参照可能化**であり **semantic lock-in しない**（§MVP 実装接続）。**004** は分析メタデータを与える側だが、**003 の転記結果に業務意味を上書き確定するとは限らない**。  
+- **004** は dimension／measure／category_axis／time_axis 等の**候補整理**と、`available_aggregations` や `review_points` の**生成前提整理**を担う。**003 未解決事項を勝手に確定したことにしない**。  
+- taxonomy 依存の業務意味、人確認が要る衝突、merges／多段見出し由来の曖昧さは **`trace_map[]`**・**review**・**上位仕様**へ**残しうる**（005／011 の正本責務を侵さない）。004 側の整理は **[SPEC-TI-004](../03_analysis_human/SPEC-TI-004-analysis-metadata.md)** の「003 正規化結果との接続境界（MVP）」を参照。
 
 ---
 
@@ -472,6 +479,8 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.2.7 | 2026-04-07 | §関連仕様書に「004 分析メタデータへの受け渡し（MVP 境界）」を追記（003→004・候補性・委譲・004 節への参照）。 |
+| 0.2.6 | 2026-04-07 | §関連仕様書の接続境界見出しを「002 判定結果との接続境界（MVP）」にし、002 側の対応節への参照を明記。 |
 | 0.2.5 | 2026-04-07 | §関連仕様書に 002 との接続境界（ヒント／畳み込み／確定しない範囲／trace・review 委譲）を最小追記。 |
 | 0.2.4 | 2026-04-07 | MVP 契約の要約を §「MVP 実装接続」に追記（公式入力・最小出力・責務境界・`column_slots` 要点・未解決の上位委譲）。 |
 | 0.2.3 | 2026-04-03 | `rows[].values` は当面 `cN` 維持。将来の論理列用に `dataset_payload.column_slots[]` を並置しうる旨（最小スキーマ・004 非確定）。 |

@@ -2,9 +2,9 @@
 id: SPEC-TI-013
 title: 分析候補生成仕様書
 status: Draft
-version: 0.2
+version: 0.2.1
 owners: []
-last_updated: 2026-04-19
+last_updated: 2026-04-07
 depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-004, SPEC-TI-005, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010, SPEC-TI-011]
 ---
 
@@ -71,6 +71,13 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-004, SPEC-TI-005, SP
 | [SPEC-TI-006](../01_foundation/SPEC-TI-006-io-data.md) | 将来 **`SuggestionSet` の JSON Schema 正本**（Phase4）。 |
 | [SPEC-TI-009](../01_foundation/SPEC-TI-009-table-taxonomy.md) | **表タイプ語彙**。013 は新ラベルを増やさない。 |
 | [SPEC-TI-010](../01_foundation/SPEC-TI-010-heading-model.md) | 見出しの正本。013 は**改変しない**。 |
+
+### 011 信頼度スコアリングとの接続境界（MVP）
+
+- **013 は** **[SPEC-TI-005](SPEC-TI-005-human-review-flow.md)** の **`suggestion_suppression_level`**・**review** 結果を**一次制約**として**尊重**しつつ、**[SPEC-TI-011](../02_pipeline/SPEC-TI-011-confidence-scoring.md)** の **confidence**／**readiness**／**caution** を**補助入力**として**参照しうる**。**011** の数値・状態**だけ**で機械的に採択を**確定**せず、**011** を参照しても **005** の **suppression** を**上書きしない**。  
+- **013** は**候補の提示可否**・**優先度**・**注意付き提示**・**限定提示**を整理するが、**review 状態**や **confidence** を**新規定義する層ではない**。**未解決**を**確定済み候補**として**押し出さない**。  
+- **caution**／**limited**／**blocked** 相当の扱いは **007** 等**上位仕様**に渡す際も**壊さない**前提とする。**004** の分析メタ**候補**とも**整合**する。  
+- 011 側の整理は **[SPEC-TI-011](../02_pipeline/SPEC-TI-011-confidence-scoring.md)** の「013 分析候補生成への受け渡し（MVP 境界）」を参照。
 
 ---
 
@@ -335,5 +342,6 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-004, SPEC-TI-005, SP
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.2.1 | 2026-04-07 | §関連仕様書に「011 信頼度スコアリングとの接続境界（MVP）」を追記（005 正本・011 補助・未解決の確定扱い禁止・011 節への参照）。 |
 | 0.2 | 2026-04-19 | 005 を suppression 確定正本、011 を補助信号、013 を最終制御実行者と明文化。位置づけ・反映節の整合。 |
 | 0.1 | 2026-04-18 | Draft 初版本文。指定 23 章構成。004 主入力、カテゴリ別生成／抑制、011 読取・005 suppression、SuggestionSet、根拠説明。 |

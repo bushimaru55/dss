@@ -2,9 +2,9 @@
 id: SPEC-TI-004
 title: 分析メタデータ仕様書
 status: Draft
-version: 0.2.3
+version: 0.2.5
 owners: []
-last_updated: 2026-04-03
+last_updated: 2026-04-07
 depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-005, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010, SPEC-TI-011, SPEC-TI-013]
 ---
 
@@ -73,6 +73,20 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-005, SPEC-TI-006, SP
 | [SPEC-TI-010](../01_foundation/SPEC-TI-010-heading-model.md) | 見出し構造は 003 経由で間接参照。004 は見出しモデルを書き換えない。 |
 | [SPEC-TI-011](../02_pipeline/SPEC-TI-011-confidence-scoring.md) | 不確実性・特徴量の**消費者**（数式は 011）。 |
 | [SPEC-TI-013](SPEC-TI-013-suggestion-generation.md) | 候補生成の**消費者**。004 は前提メタを渡す。 |
+
+### 003 正規化結果との接続境界（MVP）
+
+- **004 は** `rows[]`（論理行）、**`column_slots[]`**（列参照面）、**`trace_map[]`**（出典・不一致・未解決情報）を受け取り、必要に応じて **002／003 の trace を遡る**前提とする。  
+- **003 出力を「意味確定済み」とはみなさない**。転記は **候補**であり、**semantic lock-in しない**（[SPEC-TI-003](../02_pipeline/SPEC-TI-003-normalization.md) §MVP 実装接続）。  
+- **004** は dimension／measure／category_axis／time_axis 等を**候補として整理**し、`available_aggregations` や `review_points` の**前段**として扱う。**003 未解決事項を自動的に確定済み扱いしない**。  
+- まだ **review 前提**の論点を **確定済み**として扱わない。**taxonomy**・**merges／多段見出し**由来の残りは **`review_points`**・**上位仕様**へ**委譲しうる**（005 はフロー正本、011 はスコア正本）。003 側の整理は **[SPEC-TI-003](../02_pipeline/SPEC-TI-003-normalization.md)** の「004 分析メタデータへの受け渡し（MVP 境界）」を参照。
+
+### 005 人確認フローへの受け渡し（MVP 境界）
+
+- **`review_points[]`**（および **`review_required`**）を通じて **005** に **未解決**を渡す。**005** は必要に応じて 003 の **`trace_map[]`**、**`rows[]`**、**`column_slots[]`** を**参照**する前提とする（011／013 の正本責務を侵さない）。  
+- **004** の整理結果を **「完全確定済み」**とはみなさない。**候補**整理・**review_points 化**までであり、**003／004 が抱え込まない未解決**を**閉じず**に **005** が受ける。  
+- **人確認**が必要な論点は **005**／**上位仕様**へ**委譲**しうる。**004** は**勝手に確定済み扱いしない**。  
+- 005 側の整理は **[SPEC-TI-005](SPEC-TI-005-human-review-flow.md)** の「004 分析メタデータとの接続境界（MVP）」を参照。
 
 ---
 
@@ -370,6 +384,8 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-005, SPEC-TI-006, SP
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.2.5 | 2026-04-07 | §関連仕様書に「005 人確認フローへの受け渡し（MVP 境界）」を追記（review_points・003 参照・未解決の閉じない委譲・005 節への参照）。 |
+| 0.2.4 | 2026-04-07 | §関連仕様書に「003 正規化結果との接続境界（MVP）」を追記（候補性・trace 遡及・review／上位委譲・003 節への参照）。 |
 | 0.2.3 | 2026-04-03 | MVP 観測に `column_slots_summary` と `004-mvp-column-slots-referenced` を追記（参照のみ・意味確定なし）。 |
 | 0.2.2 | 2026-04-03 | 主入力に任意 `column_slots[]` を追記（`cN` 橋渡し・004 非確定）。MVP 観測節に `column_slots` の位置づけを補足。 |
 | 0.2.1 | 2026-04-03 | MVP: `dataset_payload` の `normalization_input_hints`／`trace_map`／`rows` を参照入力として要約し `decision`／`review_points` に観測痕跡を残すスパイク（意味確定なし）。 |

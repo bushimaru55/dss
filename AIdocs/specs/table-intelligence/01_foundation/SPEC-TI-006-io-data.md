@@ -2,9 +2,9 @@
 id: SPEC-TI-006
 title: 入出力データ仕様書
 status: Draft
-version: 0.5.1
+version: 0.5.4
 owners: []
-last_updated: 2026-04-03
+last_updated: 2026-04-07
 depends_on: [SPEC-TI-009, SPEC-TI-010]
 ---
 
@@ -53,6 +53,10 @@ depends_on: [SPEC-TI-009, SPEC-TI-010]
 
 | 仕様 | 関係 |
 |------|------|
+| SPEC-TI-002 | **`JudgmentResult`**／**`evidence[]`**（§5.6）の**接続元**。一次判定および **003** へ渡る正規化前ヒントの上流。**意味・ルールは 002 正本**。 |
+| SPEC-TI-003 | **`NormalizedDataset`**（`rows[]`／`trace_map`／副次メタ等、§5.7）と**接続が深い**正規化仕様。**意味・生成規則は 003 正本**。 |
+| SPEC-TI-004 | **`AnalysisMetadata`**（`review_points`／`review_required` 等、§5.8）の整理仕様。**005** 以降への橋渡しとして本書と接続。**意味・生成規則は 004 正本**。 |
+| SPEC-TI-005 | **`HumanReviewSession`**／**review 結果**（§5.9）の**接続先**。**004** の **`review_points`／`review_required`** を受ける人確認フロー仕様。**011**／**013** へ渡る解決状態・抑制判断の上流。**意味・状態遷移・解決管理は 005 正本**。 |
 | SPEC-TI-009 | `taxonomy_code` 列挙の正本。 |
 | SPEC-TI-010 | `HeadingTree` 構造の正本。 |
 | SPEC-TI-012 | エラーコード列挙・マッピングの正本（012 骨格と相互に整合）。 |
@@ -213,6 +217,7 @@ depends_on: [SPEC-TI-009, SPEC-TI-010]
 | `type_normalization_notes[]` | 型正規化の注記。 |
 | `unit_application[]` | 単位適用のスコープ。 |
 | `column_slots[]` | 列スロットカタログ（`cN` と `table_column_index` の橋渡し・003 補助、[SPEC-TI-003](../02_pipeline/SPEC-TI-003-normalization.md)）。 |
+| `dataset_payload` | **MVP／backend 拡張バッグ**。[SPEC-TI-003](../02_pipeline/SPEC-TI-003-normalization.md) の **`normalization_input_hints`**（002 由来の畳み込み）や **`column_slots[]`** の**実装配置**を載せうる。**§5.7 冒頭の必須4フィールド（`dataset_id` 等）の外**に置くことを許容する。**意味ロックイン可否等の語彙は 003 正本**。 |
 
 #### 5.7.2 副次メタの要素型方向・配列必須／任意（Step 2-B・Phase 4 第1版レベル）
 
@@ -265,6 +270,8 @@ depends_on: [SPEC-TI-009, SPEC-TI-010]
 | pending_questions[] | ✓ | |
 | answers[] | | **人の回答ログ**（最小構造は §5.9.1）。**必須ではない**（**空配列**可）。**UI 文言・API 入力形式は 014／005 に委譲**。 |
 
+**005 由来の拡張（概念・任意）**: [SPEC-TI-005](../03_analysis_human/SPEC-TI-005-human-review-flow.md) 正本として **`suggestion_suppression_level`**（概念）・**`review_session_resolution_grade`**（概念）・**`human_resolved_uncertainty[]`**（概念）等を**セッションに載せうる**。**上書き関係（005 の suppression 確定 vs 011 の信号）は 005／011 正本**。**完全なキー集合・必須化は Phase 4／005**。上表は**最小核**である。
+
 #### 5.9.1 `answers[]` の要素（最小構造・Step 2-B）
 
 **005** の **`point_id`** と **1:1 または 1:多**（同一論点の再回答は **`answer_id`** で区別）。**画面ラベル・リクエスト DTO**は **014** で確定する。
@@ -290,10 +297,12 @@ depends_on: [SPEC-TI-009, SPEC-TI-010]
 |------------|------|------|
 | evaluation_id | ✓ | 一意 ID。 |
 | table_id | ✓ | 対象テーブル。 |
-| scores | ✓ | **多次元スコアの束**（オブジェクトまたは配列）。**内部の完全 Schema**は **Phase 4**（011 がキー設計の正本）。 |
+| scores | ✓ | **多次元スコアの束**（オブジェクトまたは配列）。**内部の完全 Schema**は **Phase 4**（011 がキー設計の正本）。**readiness／caution 相当の情報**は **011 正本**のもと **`scores` または `explanation` 内**に載せうる。 |
 | decision_recommendation | ✓ | §6 **`decision_recommendation`**。 |
 | explanation | ✓ | **011 の `explanation` 構造をそのまま格納する器**（ネスト・`refs` 等は **011 正本**）。 |
 | feature_snapshot_hash | | **再現性**のための入力特徴のハッシュ（**任意**・アルゴリズムは 011／運用で確定）。 |
+
+**補足（005 との関係）**: **`suggestion_suppression_level` の確定値の正本は 005**であり、**本エンティティに必須フィールドとして複写するものではない**（[SPEC-TI-011](../02_pipeline/SPEC-TI-011-confidence-scoring.md) と整合）。
 
 ### 5.11 SuggestionSet（分析候補・器）
 
@@ -435,6 +444,9 @@ depends_on: [SPEC-TI-009, SPEC-TI-010]
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.5.4 | 2026-04-07 | §2 関係仕様表に 005 を追加（HumanReviewSession・004 受け・011／013 上流・005 正本）。 |
+| 0.5.3 | 2026-04-07 | §2 関係仕様表に 002／003／004 を追加（パイプライン入口導線・各正本は各仕様）。 |
+| 0.5.2 | 2026-04-07 | §5.7.1 に `dataset_payload`（003 MVP・normalization_input_hints 等）、§5.9 に 005 由来セッション拡張の一文、§5.10 に readiness／caution・005 suppression との関係を最小追記。 |
 | 0.5.1 | 2026-04-03 | §5.7.1／§5.7.2 に `column_slots[]`（003 MVP・`cN` 橋渡し、004 非確定）を追記。 |
 | 0.5 | 2026-04-21 | Step 3: §5.11 `SuggestionSet`・§5.11.1 候補要素、`JobRun` の `evaluation_ref`／`suggestion_run_ref`（§5.12）、§5.0 014／015 意味リンク、§1 Step 1〜3 整理、§2 に 013 行・014／015 行拡張、§3.2 ID 行拡張。`JobRun` 節番号 §5.12 へ繰下げ。 |
 | 0.4 | 2026-04-03 | Step 2-B: §5.7.2 副次配列の要素型・必須／任意、§5.8.1 `review_points[]` 整理（`priority`／`severity` 暫定方針）、§5.9.1 `answers[]`、§6 禁止遷移下書き、§5.10 `ConfidenceEvaluation`、§5.11 `JobRun`、§2 に 011 行。 |
