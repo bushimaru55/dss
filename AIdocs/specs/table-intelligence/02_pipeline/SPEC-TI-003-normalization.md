@@ -2,9 +2,9 @@
 id: SPEC-TI-003
 title: 変換・正規化仕様書
 status: Draft
-version: 0.2.3
+version: 0.2.5
 owners: []
-last_updated: 2026-04-03
+last_updated: 2026-04-07
 depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 ---
 
@@ -82,6 +82,13 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 | SPEC-TI-011 | **信頼度**。003 は不確実性を**特徴量として**出力に載せうる。 |
 | SPEC-TI-013 | **分析候補生成**。003 の論理表現を入力とするが、生成ロジックは 013 正本。 |
 
+### [SPEC-TI-002](SPEC-TI-002-judgment.md) との接続境界（要約）
+
+- **002 が 003 に渡すもの**: `evidence[]` の **`J2-ROW-001` / `J2-COL-001`**（`by_row_index` / `by_column_index`）。MVP では materialize がこれを **`dataset_payload.normalization_input_hints`** に**畳んで**参照させる。**候補ヒントであり、一次判定の確定ではない**。  
+- **003 が用いてよいもの（002 由来）**: **行／列 index ベース**のヒント、（001 と併せ）**`raw_display` の転記**、**`column_slots` の参照面**。  
+- **003 が単独で確定しないもの**: **taxonomy の最終意味**、**dimension／measure**、**業務意味**、**merges／多段見出しの解決**（§入力の理想形・経路選択は別途；MVP は §MVP 実装接続）。  
+- **委譲**: **不一致・曖昧さを 003 が抱え込まず**、`trace_map`・**レビュー**（[SPEC-TI-005](../03_analysis_human/SPEC-TI-005-human-review-flow.md)）・**上位仕様**へ逃がす。002 側の整理は **[SPEC-TI-002](SPEC-TI-002-judgment.md)** の「003 に引き継ぐ事項」を参照。
+
 ---
 
 ## 正規化の位置づけ
@@ -113,6 +120,43 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 - **002 の `evidence[].details`** — 行種別マップ、列役割マップ、単位候補、`UNIT_SCOPE_*`、`ambiguity` 等（006 MINOR または暫定 JSON）。
 
 ### MVP 実装接続（backend）
+
+以下は **現行 backend の MVP スタブ**（`NormalizedDataset.dataset_payload` 上の出力）に限定した**契約の要約**である。§入力の「必須／推奨」や **経路選択**（`taxonomy_code` 主軸）と述べる**理想の 003**とは**境界が異なる**。より詳細な契約・テスト観点は同ディレクトリの `MEMO-TI-003-mvp-*.md` を参照してよい。
+
+#### MVP の公式入力（backend スタブ）
+
+- **主入力**: `dataset_payload.normalization_input_hints`（002 の J2-ROW / J2-COL 由来の **`by_row_index` / `by_column_index`**。候補ヒントであり**意味確定ではない**）。  
+- **補助入力**: 同一テーブル最新 `TableReadArtifact.cells` の **`raw_display`**（データ行について **`values["c{N}"]` への転記**にのみ使用）。  
+- **行走査の補助**: **`by_row_index` が空**のときのみ、`TableScope` の **`row_min` / `row_max`**（0-based inclusive）で行 index を列挙する。  
+- **現 MVP で直接読まないもの**: `JudgmentResult.evidence` 全文の再解釈、`taxonomy_code`、`decision`、`merges`（materialize がヒントへ畳んだ後の `normalization_input_hints` 以外の 002 直参照）。
+
+#### MVP の最小出力と「確定しない」範囲
+
+| 出力 | 役割（MVP） | まだ確定しないもの（例） |
+|------|-------------|---------------------------|
+| **`rows[]`** | ヒントに従い**データ行**を列挙し、`c{N}` に **001 の転記結果**を載せる（スキップ行は含めない）。 | 型正規化、論理列 ID、grain、[SPEC-TI-004](../03_analysis_human/SPEC-TI-004-analysis-metadata.md) における dimensions／measures の意味確定。 |
+| **`trace_map[]`** | スキップ行・セル転記・列ヒントの**説明責任**（`trace_ref`、`kind`、行／列 index）。 | 監査ログの正本、002／004 の最終判定の置換。 |
+| **`column_slots[]`** | **列カタログ／参照面**（列 index と `cN` の対照、任意で `hint_from_002` と trace 参照）。 | dimension／measure の割当、taxonomy 連動、**表の全列の網羅**。 |
+
+#### `rows[]` / `trace_map[]` / `column_slots[]` の責務境界（MVP）
+
+- **`rows[]`** は**転記結果**（論理行＋`values`）。  
+- **`trace_map[]`** は**説明責任**（`rows` に載らない事実・セル粒度の根拠を含む）。  
+- **`column_slots[]`** は**列対照表**（`cN` と列 index の対応および候補ヒントの参照）。  
+- **`dimensions`／`measures`、taxonomy、業務意味の確定**は 004／002／009 等の**別層**（MVP は **`semantic_lock_in: false`**）。
+
+#### `column_slots[]` の MVP 契約（要点）
+
+- **列カタログ／参照面**であり、**dimension／measure の意味確定ではない**。  
+- **スロット集合**は **`normalization_input_hints.by_column_index` のキー**と、**`rows[].values` に転記された列**（`cN` から復元した index）の**和集合**とする。  
+- 各要素に **`semantic_lock_in: false`**（004 への意味ロックインではない）。  
+- **`slot_id` の恒久フォーマット**や論理列 ID への昇格は本 MVP では固定しない（下記「未解決」）。
+
+#### MVP で未解決の論点（上位委譲）
+
+`merges` の解釈、**多段見出し**、**taxonomy 連動**に基づく経路、**業務意味**（004）、**`slot_id` の恒久化**／論理列スキーマは、**現 MVP では解決せず**、上位層・後続仕様・人確認へ**委譲**する。
+
+---
 
 `normalization_input_hints` は **`JudgmentResult.evidence`（J2-ROW-001 / J2-COL-001）由来**の入力ヒントとして materialize で `dataset_payload` に載せ、003 スタブが参照する。
 
@@ -428,6 +472,8 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.2.5 | 2026-04-07 | §関連仕様書に 002 との接続境界（ヒント／畳み込み／確定しない範囲／trace・review 委譲）を最小追記。 |
+| 0.2.4 | 2026-04-07 | MVP 契約の要約を §「MVP 実装接続」に追記（公式入力・最小出力・責務境界・`column_slots` 要点・未解決の上位委譲）。 |
 | 0.2.3 | 2026-04-03 | `rows[].values` は当面 `cN` 維持。将来の論理列用に `dataset_payload.column_slots[]` を並置しうる旨（最小スキーマ・004 非確定）。 |
 | 0.2.2 | 2026-04-08 | MVP trace `kind` 細分化（`header_band_skipped` / `note_candidate` / 列候補）。`normalization_input_hints` の evidence 由来を明記。 |
 | 0.2.1 | 2026-04-08 | MVP 接続: `normalization_input_hints` からスタブが `rows`/`trace_map` にスキップ行・列役割ヒントを載せうる旨（`ti.mvp_normalization_stub.v1`）。 |

@@ -2,9 +2,9 @@
 id: SPEC-TI-002
 title: 判定ロジック仕様書
 status: Draft
-version: 0.3.3
+version: 0.3.4
 owners: []
-last_updated: 2026-04-08
+last_updated: 2026-04-07
 depends_on: [SPEC-TI-001, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 ---
 
@@ -455,6 +455,13 @@ depends_on: [SPEC-TI-001, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010]
 - 集計行を**データから切り離すか**、メタとして残すかの**最終方針**。  
 - **0-based inclusive** 座標系に基づく `trace_map` 設計。
 
+**002 → 003 の接続境界（要約）**
+
+- **002 が 003 に渡すもの**: `evidence[]` の **`J2-ROW-001` / `J2-COL-001`**（`details.by_row_index` / `by_column_index`）。backend の materialize ではこれを **`dataset_payload.normalization_input_hints`** に**畳んだ形**で 003 が参照しうる。**候補ヒントであり、行種・列役割・taxonomy の意味確定ではない**（§行／列一次ラベル（J2-ROW / J2-COL スパイク）および [SPEC-TI-003](SPEC-TI-003-normalization.md) §MVP 実装接続）。  
+- **003 がそのまま用いてよいもの**: **行／列 index ベース**のヒント、001 の **`raw_display` 転記**、**`column_slots` の参照面**（列 index と `cN` の対照）。  
+- **003 が 002 由来だけで確定しないもの**: **taxonomy の最終意味**、[SPEC-TI-004](../03_analysis_human/SPEC-TI-004-analysis-metadata.md) における **dimension／measure**、**業務意味**、**merges／多段見出しの解決**。  
+- **逃がし先**: **不一致・曖昧さを 003 が抱え込まず**、`trace_map`・**`NEEDS_REVIEW`・人確認**・上位仕様へ**委譲**する（002 は根拠を `evidence` に残し、003 は**再判定しない**）。
+
 ### SPEC-TI-005 に引き継ぐ事項
 
 - `NEEDS_REVIEW` のときの**曖昧性タグ**・**複数仮説**（evidence.details）。  
@@ -521,6 +528,7 @@ P0 非該当時、**本文 §行種別／列種別**の暫定 enum を、001 の
 
 | 版 | 日付 | 概要 |
 |----|------|------|
+| 0.3.4 | 2026-04-07 | 補足メモ「003 に引き継ぐ事項」に 002→003 接続境界（ヒント／畳み込み／確定しない範囲／委譲）を最小追記。 |
 | 0.3.3 | 2026-04-08 | J2-ROW/J2-COL MVP: `*_CANDIDATE` 値を 003 向けに付けうる旨をスパイク節に追記。 |
 | 0.3.2 | 2026-04-08 | J2-ROW-001 / J2-COL-001: `by_row_index` / `by_column_index`（003 入力候補、`primary_labels_schema`）。 |
 | 0.3.1 | 2026-04-08 | J2-TAX v1: 009 軸観測・軸ゲート（`ti.judge.spike.v1`）をスパイク節に追記。 |

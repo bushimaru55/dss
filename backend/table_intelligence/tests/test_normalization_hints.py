@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from table_intelligence.normalization_hints import (
     NORMALIZATION_HINTS_SCHEMA_REF,
     build_mvp_rows_and_trace_map_from_hints,
@@ -309,3 +311,62 @@ def test_read_hints_from_payload():
     h = read_normalization_input_hints_from_dataset_payload(p)
     assert h is not None
     assert h["by_row_index"]["0"] == "ROW_HEADER_BAND"
+
+
+def test_build_mvp_table_scope_row_range_when_by_row_empty():
+    """by_row_index が空のとき TableScope.row_min/max で行走査（各行情報は ROW_UNKNOWN）。"""
+    hints = {"by_row_index": {}, "by_column_index": {}}
+    table = SimpleNamespace(row_min=2, row_max=4)
+    rows, trace, meta, slots = build_mvp_rows_and_trace_map_from_hints(
+        hints, table=table, cells=None
+    )
+    assert [r["table_row_index"] for r in rows] == [2, 3, 4]
+    assert all(
+        r["normalization_hint"]["from_002_row_kind"] == "ROW_UNKNOWN" for r in rows
+    )
+    assert all(r["values"] == {} for r in rows)
+    assert trace == []
+    assert slots == []
+    assert meta.get("transcribed_cell_trace_count") == 0
+    assert meta.get("data_row_count") == 3
+
+
+def test_build_mvp_aggregate_rows_skipped_trace_not_in_rows():
+    """集計行は skipped_row_candidate のみ残り、rows[] には含めない。"""
+    hints = {
+        "by_row_index": {
+            "0": "ROW_SUBTOTAL",
+            "1": "ROW_GRAND_TOTAL",
+            "2": "ROW_DETAIL",
+        },
+        "by_column_index": {},
+    }
+    rows, trace, meta, slots = build_mvp_rows_and_trace_map_from_hints(
+        hints, table=None, cells=None
+    )
+    assert len(rows) == 1
+    assert rows[0]["table_row_index"] == 2
+    assert rows[0]["values"] == {}
+    skip_traces = [t for t in trace if t.get("kind") == "skipped_row_candidate"]
+    assert len(skip_traces) == 2
+    assert {t.get("table_row_index") for t in skip_traces} == {0, 1}
+    assert meta["skipped_row_trace_count"] == 2
+    assert meta["data_row_count"] == 1
+    assert slots == []
+
+
+def test_build_mvp_row_unknown_data_row_empty_values():
+    """ROW_UNKNOWN はデータ行として rows[] に入りうる（cells なしなら values は空）。"""
+    hints = {"by_row_index": {"7": "ROW_UNKNOWN"}, "by_column_index": {}}
+    rows, trace, meta, slots = build_mvp_rows_and_trace_map_from_hints(
+        hints, table=None, cells=None
+    )
+    assert len(rows) == 1
+    assert rows[0]["table_row_index"] == 7
+    assert rows[0]["logical_row_index"] == 0
+    assert rows[0]["values"] == {}
+    assert rows[0]["normalization_hint"]["from_002_row_kind"] == "ROW_UNKNOWN"
+    assert rows[0]["normalization_hint"].get("semantic_lock_in") is False
+    assert trace == []
+    assert slots == []
+    assert meta.get("transcribed_cell_trace_count") == 0
