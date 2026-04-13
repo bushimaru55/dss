@@ -85,6 +85,7 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-004, SPEC-TI-005, SP
 - 現行 MVP では **`measures` が非空**なら **1 件**の **`category: summary_stub`** を返し、**空なら 0 件**である。**priority・readiness 等はスタブ的固定**のまま（本格カテゴリ・gating は未着手）。
 - 各候補の **`evidence` / `risk_notes`** に **004 `AnalysisMetadata` 観測**（`metadata_id`、`dataset_id`、`dimensions` / `measures` の id・name、`time_axis` の有無等）を **トレースとして**載せうる。**意味確定・taxonomy 確定・semantic lock-in ではない**。
 - **005 / 011 は候補の採否・順位決定に使わない**（read-only は **`generation_constraints_reference`** の GET 応答のみ。§19・014 §19.5 参照）。
+- **`evidence` の参照は observation trace**（004 観測の説明）であり、**006 の論理パス正本や `required_fields` と同一視しない** — [SPEC-TI-014 §19.6](../04_system/SPEC-TI-014-api.md#s196-observation-trace-vs-logical-path) を参照。
 
 ### 011 信頼度スコアリングとの接続境界（MVP）
 
