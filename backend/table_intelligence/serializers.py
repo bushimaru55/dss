@@ -8,6 +8,11 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from table_intelligence.mvp_005_review_state import build_mvp_005_canonical_review_summary
+from table_intelligence.mvp_011_evaluation_context import build_mvp_011_review_state_reference
+from table_intelligence.mvp_013_suggestion_context import (
+    build_mvp_013_generation_constraints_reference,
+)
 from table_intelligence.models import (
     AnalysisJob,
     AnalysisMetadata,
@@ -152,6 +157,7 @@ class CreateReviewSessionRequestSerializer(serializers.Serializer):
 
 class HumanReviewSessionSerializer(serializers.ModelSerializer):
     metadata_id = serializers.UUIDField(source="metadata.metadata_id", read_only=True)
+    mvp_005_canonical_summary = serializers.SerializerMethodField()
 
     class Meta:
         model = HumanReviewSession
@@ -163,10 +169,14 @@ class HumanReviewSessionSerializer(serializers.ModelSerializer):
             "review_required_snapshot",
             "review_points_snapshot",
             "resolution_grade",
+            "mvp_005_canonical_summary",
             "created_by_id",
             "created_at",
             "updated_at",
         ]
+
+    def get_mvp_005_canonical_summary(self, obj: HumanReviewSession) -> dict:
+        return build_mvp_005_canonical_review_summary(obj)
 
 
 class ReviewAnswerItemSerializer(serializers.Serializer):
@@ -229,9 +239,15 @@ class StartSuggestionRunRequestSerializer(serializers.Serializer):
 
 
 class SuggestionSetSerializer(serializers.ModelSerializer):
-    """006 / OpenAPI ``SuggestionSet`` の最小投影（``table_id`` は文字列）。"""
+    """
+    006 / OpenAPI ``SuggestionSet`` の最小投影（``table_id`` は文字列）。
+
+    ``generation_constraints_reference`` は 005 正本・011 補助への **読み取り参照**（提示確定ロジックなし）。
+    """
 
     table_id = serializers.SerializerMethodField()
+    metadata_id = serializers.UUIDField(source="metadata.metadata_id", read_only=True)
+    generation_constraints_reference = serializers.SerializerMethodField()
 
     class Meta:
         model = SuggestionSet
@@ -241,6 +257,7 @@ class SuggestionSetSerializer(serializers.ModelSerializer):
             "analysis_candidates",
             "suppression_applied",
             "metadata_id",
+            "generation_constraints_reference",
             "created_at",
             "updated_at",
         ]
@@ -248,16 +265,21 @@ class SuggestionSetSerializer(serializers.ModelSerializer):
     def get_table_id(self, obj: SuggestionSet) -> str:
         return str(obj.table_id) if obj.table_id else ""
 
+    def get_generation_constraints_reference(self, obj: SuggestionSet) -> dict:
+        return build_mvp_013_generation_constraints_reference(obj)
+
 
 class ConfidenceEvaluationSerializer(serializers.ModelSerializer):
     """
     011 評価。レスポンスでは API 名 ``evaluation_ref``（DB 列 ``evaluation_id`` と同一値）。
 
     ``decision_recommendation`` のみ。002/004 の ``decision`` は含めない。
+    ``review_state_reference`` は同一 ``metadata`` の 005 正本サマリへの **読み取り参照**（上書きしない）。
     """
 
     evaluation_ref = serializers.UUIDField(source="evaluation_id", read_only=True)
     metadata_id = serializers.UUIDField(source="metadata.metadata_id", read_only=True)
+    review_state_reference = serializers.SerializerMethodField()
 
     class Meta:
         model = ConfidenceEvaluation
@@ -268,9 +290,13 @@ class ConfidenceEvaluationSerializer(serializers.ModelSerializer):
             "confidence_score",
             "risk_signals",
             "decision_recommendation",
+            "review_state_reference",
             "created_at",
             "updated_at",
         ]
+
+    def get_review_state_reference(self, obj: ConfidenceEvaluation) -> dict:
+        return build_mvp_011_review_state_reference(obj.metadata)
 
 
 class JudgmentResultSerializer(serializers.ModelSerializer):

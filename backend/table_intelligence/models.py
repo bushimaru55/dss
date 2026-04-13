@@ -341,6 +341,7 @@ class ConfidenceEvaluation(models.Model):
     011 信頼度評価（015 §7.10）。API パスは ``evaluation_ref``、DB PK は ``evaluation_id``（同一キー空間）。
 
     ``decision_recommendation`` のみ保持し、002 の ``decision`` は持たない。
+    GET 応答の ``review_state_reference`` は ``mvp_011_evaluation_context`` による 005 参照（正本は HumanReviewSession）。
     """
 
     evaluation_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -394,7 +395,8 @@ class HumanReviewSession(models.Model):
     """
     005 人確認セッション。正本 ID は ``session_id`` のみ（review_session_id は不採用）。
 
-    snapshot 列で作成時点の ``review_required`` / ``review_points`` を保持する。
+    snapshot 列で作成時点の 004 ``review_required`` / ``review_points`` を保持する。
+    API 応答の ``mvp_005_canonical_summary`` は ``mvp_005_review_state`` で観測のみ組立（011/013 と分離）。
     """
 
     session_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -503,6 +505,7 @@ class SuggestionSet(models.Model):
     ``analysis_candidates`` は MVP では JSON 一括保持（``suggestion_candidate`` テーブルは後続）。
     ``suppression_applied`` は生成時に **005 の SuppressionRecord を読んだ監査ログ**であり、
     suppression の正本は review 側のまま（ここへ正本を移さない）。
+    API の ``generation_constraints_reference`` は ``mvp_013_suggestion_context`` による 005/011 参照（制御確定なし）。
     """
 
     suggestion_run_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

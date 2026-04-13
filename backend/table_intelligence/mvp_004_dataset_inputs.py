@@ -2,7 +2,8 @@
 004 MVP: ``NormalizedDataset.dataset_payload`` の 003 成果物を **参照入力**として読むだけ。
 
 - ``normalization_input_hints``（002→003 の意図）→ ``trace_map`` → ``rows`` → 任意の ``column_slots[]``（003 列カタログ）を要約する。
-- dimensions / measures / grain の確定は行わない（``semantic_lock_in: false``）。
+- 003 の ``mvp_input_provenance`` / ``row_index_enumeration_source`` / fallback trace は **観測サマリに載せるのみ**（由来の認識用。自動確定・救済はしない）。
+- dimensions / measures / grain の確定は行わない（観測の ``semantic_lock_in: false`` を維持）。
 """
 
 from __future__ import annotations
@@ -28,6 +29,84 @@ def trace_kind_counts(trace_map: object) -> dict[str, int]:
     return out
 
 
+def trace_mvp_input_provenance_counts(trace_map: object) -> dict[str, int]:
+    """003 ``trace_map[].mvp_input_provenance`` の件数（観測のみ・確定判断に使わない）。"""
+    if not isinstance(trace_map, list):
+        return {}
+    out: dict[str, int] = {}
+    for item in trace_map:
+        if not isinstance(item, dict):
+            continue
+        p = item.get("mvp_input_provenance")
+        if not isinstance(p, str) or not p:
+            continue
+        out[p] = out.get(p, 0) + 1
+    return out
+
+
+def trace_row_index_fallback_banner_present(trace_map: object) -> bool:
+    """
+    003 が ``by_row_index`` 空のときだけ前置する ``row_index_enumeration_source`` trace の有無。
+
+    downstream は **未確定性の経路メモ**として読む（列挙の正否を確定しない）。
+    """
+    if not isinstance(trace_map, list):
+        return False
+    for item in trace_map:
+        if not isinstance(item, dict):
+            continue
+        if item.get("kind") == "row_index_enumeration_source":
+            return True
+    return False
+
+
+def rows_row_index_enumeration_source_counts(rows: object) -> dict[str, int]:
+    """``rows[].normalization_hint.row_index_enumeration_source`` の件数（観測のみ）。"""
+    if not isinstance(rows, list):
+        return {}
+    out: dict[str, int] = {}
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        nh = item.get("normalization_hint")
+        if not isinstance(nh, dict):
+            continue
+        src = nh.get("row_index_enumeration_source")
+        if not isinstance(src, str) or not src:
+            continue
+        out[src] = out.get(src, 0) + 1
+    return out
+
+
+def rows_normalization_hint_semantic_lock_in_non_false_count(rows: object) -> int:
+    """キーがある行だけ評価: ``semantic_lock_in`` が False でない行数（観測のみ）。"""
+    if not isinstance(rows, list):
+        return 0
+    n = 0
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        nh = item.get("normalization_hint")
+        if not isinstance(nh, dict) or "semantic_lock_in" not in nh:
+            continue
+        if nh.get("semantic_lock_in") is not False:
+            n += 1
+    return n
+
+
+def column_slots_semantic_lock_in_non_false_count(column_slots: object) -> int:
+    """キーがある要素だけ評価: ``semantic_lock_in`` が False でない件数（観測のみ）。"""
+    if not isinstance(column_slots, list):
+        return 0
+    n = 0
+    for item in column_slots:
+        if not isinstance(item, dict) or "semantic_lock_in" not in item:
+            continue
+        if item.get("semantic_lock_in") is not False:
+            n += 1
+    return n
+
+
 def summarize_column_slots_for_observation(column_slots: object) -> dict[str, Any]:
     """``dataset_payload.column_slots`` の参照用サマリ（004 意味確定ではない）。"""
     cs_ok = isinstance(column_slots, list)
@@ -38,6 +117,7 @@ def summarize_column_slots_for_observation(column_slots: object) -> dict[str, An
         "slot_id_values_key_preview": [],
     }
     if not cs_ok:
+        out["semantic_lock_in_non_false_entry_count"] = 0
         return out
     hints_n = 0
     preview: list[dict[str, Any]] = []
@@ -47,6 +127,9 @@ def summarize_column_slots_for_observation(column_slots: object) -> dict[str, An
         if item.get("hint_from_002") is not None:
             hints_n += 1
     out["hints_from_002_present_count"] = hints_n
+    out["semantic_lock_in_non_false_entry_count"] = (
+        column_slots_semantic_lock_in_non_false_count(column_slots)
+    )
     for item in column_slots[:8]:
         if not isinstance(item, dict):
             continue
@@ -92,6 +175,12 @@ def build_mvp_004_dataset_input_observation(dataset_payload: dict[str, Any]) -> 
         "read": trace_ok,
         "entry_count": len(trace_map) if trace_ok else 0,
         "kind_counts": trace_kind_counts(trace_map) if trace_ok else {},
+        "mvp_input_provenance_counts": (
+            trace_mvp_input_provenance_counts(trace_map) if trace_ok else {}
+        ),
+        "row_index_fallback_trace_present": trace_row_index_fallback_banner_present(
+            trace_map if trace_ok else []
+        ),
     }
 
     value_keys_preview: list[str] = []
@@ -106,9 +195,21 @@ def build_mvp_004_dataset_input_observation(dataset_payload: dict[str, Any]) -> 
         "read": rows_ok,
         "data_row_count": len(rows) if rows_ok else 0,
         "first_row_value_keys_preview": value_keys_preview,
+        "row_index_enumeration_source_counts": (
+            rows_row_index_enumeration_source_counts(rows) if rows_ok else {}
+        ),
+        "normalization_hint_semantic_lock_in_non_false_count": (
+            rows_normalization_hint_semantic_lock_in_non_false_count(rows)
+            if rows_ok
+            else 0
+        ),
     }
 
     column_slots_summary = summarize_column_slots_for_observation(column_slots)
+
+    payload_semantic_lock_in: Any = None
+    if isinstance(dataset_payload, dict) and "semantic_lock_in" in dataset_payload:
+        payload_semantic_lock_in = dataset_payload.get("semantic_lock_in")
 
     return {
         "schema_ref": MVP_004_DATASET_INPUT_OBSERVATION_SCHEMA_REF,
@@ -116,7 +217,12 @@ def build_mvp_004_dataset_input_observation(dataset_payload: dict[str, Any]) -> 
         "trace_map_summary": trace_summary,
         "rows_preview": rows_preview,
         "column_slots_summary": column_slots_summary,
+        "payload_root_semantic_lock_in": payload_semantic_lock_in,
         "semantic_lock_in": False,
+        "uncertainty_provenance_note": (
+            "004 observes 003 provenance fields for traceability only; "
+            "does not treat them as meaning lock-in or enumeration correctness"
+        ),
         "note": (
             "004 MVP: summarized dataset_payload from 003; not dimension/measure/grain lock-in"
         ),

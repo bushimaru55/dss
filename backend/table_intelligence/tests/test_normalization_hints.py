@@ -324,8 +324,16 @@ def test_build_mvp_table_scope_row_range_when_by_row_empty():
     assert all(
         r["normalization_hint"]["from_002_row_kind"] == "ROW_UNKNOWN" for r in rows
     )
+    assert all(
+        r["normalization_hint"]["row_index_enumeration_source"]
+        == "table_scope_row_range_fallback"
+        for r in rows
+    )
     assert all(r["values"] == {} for r in rows)
-    assert trace == []
+    assert len(trace) == 1
+    assert trace[0].get("kind") == "row_index_enumeration_source"
+    assert trace[0].get("mvp_input_provenance") == "table_scope_row_range_fallback"
+    assert trace[0].get("table_row_min") == 2 and trace[0].get("table_row_max") == 4
     assert slots == []
     assert meta.get("transcribed_cell_trace_count") == 0
     assert meta.get("data_row_count") == 3
@@ -367,6 +375,10 @@ def test_build_mvp_row_unknown_data_row_empty_values():
     assert rows[0]["values"] == {}
     assert rows[0]["normalization_hint"]["from_002_row_kind"] == "ROW_UNKNOWN"
     assert rows[0]["normalization_hint"].get("semantic_lock_in") is False
+    assert (
+        rows[0]["normalization_hint"]["row_index_enumeration_source"]
+        == "normalization_input_hints_by_row_index"
+    )
     assert trace == []
     assert slots == []
     assert meta.get("transcribed_cell_trace_count") == 0

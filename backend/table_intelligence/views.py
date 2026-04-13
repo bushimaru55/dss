@@ -43,6 +43,9 @@ from table_intelligence.serializers import (
 )
 from table_intelligence.pipeline import parse_idempotency_key, schedule_mvp_pipeline
 from table_intelligence.exceptions import StaleMetadataConflict
+from table_intelligence.mvp_013_suggestion_context import (
+    build_mvp_013_generation_constraints_reference,
+)
 from table_intelligence.services import (
     StaleMetadataError,
     accept_or_create_analysis_job,
@@ -280,6 +283,9 @@ class ReviewSessionCreateView(APIView):
             pk=ser.validated_data["metadata_id"],
         )
         session = create_review_session(metadata=metadata, created_by=request.user)
+        session = HumanReviewSession.objects.select_related("metadata").prefetch_related(
+            "suppression_records"
+        ).get(pk=session.session_id)
         return Response(
             HumanReviewSessionSerializer(session).data,
             status=status.HTTP_201_CREATED,
@@ -294,7 +300,9 @@ class ReviewSessionDetailView(APIView):
     def get(self, request, session_id, *args, **kwargs):
         session = get_object_or_404(
             scoped_filter(
-                HumanReviewSession.objects.select_related("metadata"),
+                HumanReviewSession.objects.select_related("metadata").prefetch_related(
+                    "suppression_records"
+                ),
                 request.user,
             ),
             pk=session_id,
@@ -340,7 +348,9 @@ class ReviewSessionAnswersView(APIView):
             mark_resolved=v.get("mark_resolved") or False,
             resolution_grade=v.get("resolution_grade") or None,
         )
-        session.refresh_from_db()
+        session = HumanReviewSession.objects.select_related("metadata").prefetch_related(
+            "suppression_records"
+        ).get(pk=session.session_id)
         return Response(
             {
                 "session": HumanReviewSessionSerializer(session).data,
@@ -420,7 +430,11 @@ class SuggestionSetDetailView(APIView):
 
 
 class SuggestionCandidatesListView(APIView):
-    """GET /suggestion-runs/<suggestion_run_ref>/candidates/"""
+    """
+    GET /suggestion-runs/<suggestion_run_ref>/candidates/
+
+    ``generation_constraints_reference`` は ``GET .../suggestion-runs/<ref>`` と同じ builder による **read-only**（候補配列を変更しない）。
+    """
 
     permission_classes = [IsAuthenticated]
 
@@ -432,7 +446,12 @@ class SuggestionCandidatesListView(APIView):
             ),
             pk=suggestion_run_ref,
         )
-        body: dict = {"candidates": list(sset.analysis_candidates)}
+        body: dict = {
+            "candidates": list(sset.analysis_candidates),
+            "generation_constraints_reference": build_mvp_013_generation_constraints_reference(
+                sset
+            ),
+        }
         if request.query_params.get("include") == "recommendation":
             ev = (
                 scoped_filter(ConfidenceEvaluation.objects.all(), request.user)

@@ -17,7 +17,7 @@ from django.utils import timezone
 from table_intelligence.judgment_spike import build_judgment_from_read_observation
 from table_intelligence.mvp_004_dataset_inputs import apply_mvp_004_dataset_input_reflection
 from table_intelligence.normalization_hints import (
-    build_mvp_rows_and_trace_map_from_hints,
+    assemble_mvp_003_dataset_payload_artifacts,
     extract_normalization_input_hints_from_judgment_evidence,
     merge_hints_into_dataset_payload,
     read_normalization_input_hints_from_dataset_payload,
@@ -173,8 +173,8 @@ def _apply_judgment_hints_to_normalized_dataset(
 ) -> None:
     """
     最新 ``JudgmentResult.evidence`` の J2-ROW / J2-COL を
-    ``dataset_payload.normalization_input_hints`` に載せ、MVP スタブが
-    ``rows[]`` / ``trace_map`` をヒントに基づき埋める（003 の最小接続）。
+    ``dataset_payload.normalization_input_hints`` に載せ、003 MVP が
+    ``rows[]`` / ``trace_map`` / ``column_slots[]`` をヒントに基づき組み立てる（最小接続）。
     """
     row = get_latest_judgment_result_for_table(table)
     if row is None:
@@ -192,7 +192,7 @@ def _apply_judgment_hints_to_normalized_dataset(
         else {}
     )
     stub_rows, stub_trace, stub_meta, stub_column_slots = (
-        build_mvp_rows_and_trace_map_from_hints(
+        assemble_mvp_003_dataset_payload_artifacts(
             hints_for_stub, table=table, cells=cell_map
         )
     )
@@ -851,6 +851,11 @@ def create_review_session(
     metadata: AnalysisMetadata,
     created_by: AbstractBaseUser | None = None,
 ) -> HumanReviewSession:
+    """
+    005 セッション作成: 004 の ``review_required`` / ``review_points`` を snapshot に取り込む正本の起点。
+
+    解決・suppression 確定は行わない（OPEN のまま）。011/013 の値は書かない。
+    """
     return HumanReviewSession.objects.create(
         metadata=metadata,
         workspace_id=metadata.workspace_id,
@@ -977,20 +982,59 @@ def _audit_suppression_from_session(session: HumanReviewSession | None) -> list[
     return out
 
 
+_MAX_STUB_EVIDENCE_ITEMS_PER_LIST = 8
+
+
+def _append_004_list_traces(evidence: list[dict], items: object, source_label: str) -> None:
+    """``dimensions`` / ``measures`` の観測トレース（id/name の列挙に過ぎない。意味確定ではない）。"""
+    if not isinstance(items, list) or not items:
+        return
+    for i, item in enumerate(items[:_MAX_STUB_EVIDENCE_ITEMS_PER_LIST]):
+        if isinstance(item, dict):
+            ref = item.get("id") or item.get("key") or f"index:{i}"
+            row = {"source": source_label, "ref": str(ref)}
+            name = item.get("name")
+            if name is not None:
+                row["note"] = f"name={name}"
+            evidence.append(row)
+        else:
+            evidence.append(
+                {"source": source_label, "ref": f"index:{i}", "note": "non-object element"}
+            )
+
+
 def _build_stub_analysis_candidates(metadata: AnalysisMetadata) -> list[dict]:
-    """013 完全生成の前段スタブ。004 の ``measures`` 等のみ参照（011/005 は別経路）。"""
+    """013 完全生成の前段スタブ。004 の ``measures`` 非空検知とメタ観測トレースのみ（011/005 は候補選定に使わない）。"""
     if not metadata.measures:
         return []
+    evidence: list[dict] = [
+        {"source": "004.metadata_id", "ref": str(metadata.metadata_id)},
+    ]
+    ds_id = metadata.dataset_id
+    if ds_id:
+        evidence.append({"source": "004.dataset_id", "ref": str(ds_id)})
+    _append_004_list_traces(evidence, metadata.dimensions, "004.dimensions[]")
+    _append_004_list_traces(evidence, metadata.measures, "004.measures[]")
+    if metadata.time_axis is not None:
+        evidence.append(
+            {
+                "source": "004.time_axis",
+                "note": "present on metadata (observation only; not semantic lock-in)",
+            }
+        )
+    risk_notes = [
+        "MVP stub: full SuggestionGeneration (013) not implemented",
+        "Stub trace: emitted because 004.measures is non-empty; category/priority/readiness/gating "
+        "are not finalized. 005/011 do not select this candidate (see generation_constraints_reference on GET).",
+    ]
     return [
         {
             "candidate_id": str(uuid.uuid4()),
             "category": "summary_stub",
             "priority": 0,
             "readiness": "low",
-            "evidence": [{"source": "metadata_id", "ref": str(metadata.metadata_id)}],
-            "risk_notes": [
-                "MVP stub: full SuggestionGeneration (013) not implemented",
-            ],
+            "evidence": evidence,
+            "risk_notes": risk_notes,
         }
     ]
 

@@ -141,12 +141,20 @@ def test_post_job_materializes_chain_and_gets_resolve(auth_client, user):
     assert eres.status_code == 200
     assert "decision_recommendation" in eres.data
     assert "decision" not in eres.data
+    rref = eres.data.get("review_state_reference") or {}
+    assert rref.get("session_present") is True
+    assert rref.get("session_id") == refs["session_id"]
 
     url_sess = reverse("ti-review-session-detail", kwargs={"session_id": refs["session_id"]})
     assert auth_client.get(url_sess).status_code == 200
 
     url_sug = reverse("ti-suggestion-set-detail", kwargs={"suggestion_run_ref": refs["suggestion_run_ref"]})
-    assert auth_client.get(url_sug).status_code == 200
+    sug_res = auth_client.get(url_sug)
+    assert sug_res.status_code == 200
+    gref = sug_res.data.get("generation_constraints_reference") or {}
+    assert gref.get("schema_ref") == "ti.mvp_013_generation_constraints_reference.v1"
+    assert gref.get("primary_constraints_from_005") is not None
+    assert gref.get("auxiliary_signals_from_011") is not None
 
     url_decision = reverse("ti-table-decision", kwargs={"table_id": refs["table_id"]})
     dres = auth_client.get(url_decision)

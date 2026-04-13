@@ -2,14 +2,14 @@
 # -----------------------------------------------------------------------------
 # 正本: SPEC-TI-014（API 契約）, SPEC-TI-006（DTO / 列挙 / ref）
 # 位置づけ: 実装接続フェーズの初期ドラフト。未確定は description / TODO で明示。
-# last_updated: 2026-04-03 (0.1.8 stale metadata 409)
-# document_version: 0.1.8-draft
+# last_updated: 2026-04-08 (0.1.14 stub candidate 004 evidence trace)
+# document_version: 0.1.14-draft
 # -----------------------------------------------------------------------------
 
 openapi: 3.1.0
 info:
   title: Table Intelligence API
-  version: 0.1.8-draft
+  version: 0.1.14-draft
   description: |
     表解析パイプラインの **API 叩き台**（OpenAPI 3.1）。
 
@@ -40,6 +40,12 @@ info:
     - **409 マトリクス（0.1.6）**: **§13.1（SPEC-TI-014）** に合わせ、`GET .../candidates` から **409 を削除**（読取は 200/404）。**`POST /suggestion-runs`** に **stale `metadata_id`（lineage）用の 409 将来枠**を追加。`POST .../answers`・`POST .../review-sessions/.../rerun` の 409 は **将来枠のまま**（MVP 未返却）。
     - **401 列挙（0.1.7）**: **`GET /tables/*`** および **`GET /metadata/{id}/review-points`** に **`Unauthorized`** を追加。[GUIDE-TI-table-intelligence-api-errors.md](../GUIDE-TI-table-intelligence-api-errors.md) および **DRF `IsAuthenticated`** 前提と一致。
     - **stale metadata 409（0.1.8）**: **`POST /suggestion-runs`** のみ、`artifact_relation` に **旧→新 `analysis_metadata` の `TI_JOB_RERUN_SUPERSEDES` / `TI_REVIEW_RERUN_SUPERSEDES`** があるとき **409** + `TI_CONFLICT`（014 §13.1）。
+    - **MVP 読み取り参照面（0.1.9）**: **`TiMvpHumanReviewSession.mvp_005_canonical_summary`**（005 観測・正本は DB）、**`TiMvpConfidenceEvaluation.review_state_reference`**（011 応答に 005 サマリを添付・011 数値は不変）、**`TiMvpSuggestionSet.generation_constraints_reference`**（013 が 005 を一次制約・011 を補助として**参照のみ**）。いずれも **readOnly** 想定で **`semantic_lock_in: false`**。候補確定や suppression 再定義は行わない。
+    - **read-only 参照面の example（0.1.10）**: `TiMvpHumanReviewSession` / `TiMvpConfidenceEvaluation` / `TiMvpSuggestionSet` に **schema `example`** を追加（shape / nullability の理解補助のみ。契約拡張ではない）。
+    - **候補 GET（0.1.11）**: `GET /suggestion-runs/{suggestion_run_ref}/candidates` の 200 に **`generation_constraints_reference`** を追加（`TiMvpSuggestionSet` と**同型・同意味**の read-only。候補配列は変更しない）。
+    - **011 補助 signal 契約（0.1.12）**: `risk_signals` を **string[] と誤読されない**よう description 補足。`auxiliary_signals_from_011.risk_signals` は **011 行の写し**（schema 厳密化はしない）。
+    - **005 未解決観測（0.1.13）**: `mvp_005_canonical_summary.unresolved_work_present` 等は **005 由来の観測派生**。011 / 013 は **read-only 参照**（昇格・抑制ルール化はしない）。
+    - **013 stub 候補の根拠トレース（0.1.14）**: `analysis_candidates[]` の **`evidence` / `risk_notes`** に **004 `AnalysisMetadata` 観測**（metadata_id・dataset_id・dimensions/measures の id 名寄せ等）を載せうる。**候補カテゴリ・件数・gating は未本格化**（strict schema 化はしない）。005/011 は候補選定ではなく **`generation_constraints_reference`** で参照のみ。
 
   license:
     name: Proprietary
@@ -572,7 +578,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SuggestionSet"
+                $ref: "#/components/schemas/TiMvpSuggestionSet"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
@@ -588,6 +594,7 @@ paths:
       description: |
         - `suppression=applied`: 005 の suppression を反映した結果であることを前提とする（クエリは実装で確定）。
         - `include=recommendation`: 011 由来の `decision_recommendation` 等を同梱しうる（002 `decision` と混在させない）。
+        - **`generation_constraints_reference`**: `GET /suggestion-runs/{ref}`（`TiMvpSuggestionSet`）と**同じ read-only ブロック**（005 一次制約・011 補助の参照のみ。候補配列を変更しない）。
         - 存在しない ref・越境は **404 マスク**。
         - **409 は付けない**（読取は成功時 **200** のみ。stale は **`POST /suggestion-runs`** 側で検知—014 §13.1）。
       parameters:
@@ -609,12 +616,16 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [candidates]
+                required: [candidates, generation_constraints_reference]
                 properties:
                   candidates:
                     type: array
                     items:
                       $ref: "#/components/schemas/SuggestionCandidate"
+                  generation_constraints_reference:
+                    $ref: "#/components/schemas/Mvp013GenerationConstraintsReference"
+                    description: |
+                      `GET /suggestion-runs/{ref}` の `generation_constraints_reference` と同型。read-only（候補の並べ替え・抑制確定は行わない）。
                   decision_recommendation:
                     $ref: "#/components/schemas/DecisionRecommendation"
                     description: include=recommendation 時のみ。011 正本。
@@ -970,10 +981,43 @@ components:
           type: string
           format: date-time
 
+    Mvp005CanonicalSummary:
+      type: object
+      description: |
+        Django `mvp_005_review_state.build_mvp_005_canonical_review_summary` の結果（**読み取り専用**）。
+        **正本**は `HumanReviewSession` / `SuppressionRecord` / snapshot 列。本ブロックは**観測用派生**であり自動解決しない。
+        **`unresolved_work_present`** 等は、セッション状態から導く**未解決作業の観測用指標**であり、**ビジネス上の最終確定や候補昇格の根拠にはならない**（MVP はルール化しない）。
+        `schema_ref` は `ti.mvp_005_canonical_review_summary.v1` を想定。`semantic_lock_in` は false。
+      additionalProperties: true
+
+    Mvp011ReviewStateReference:
+      type: object
+      description: |
+        Django `mvp_011_evaluation_context.build_mvp_011_review_state_reference`。同一 `metadata` の最新 `HumanReviewSession` 由来の 005 サマリを参照する**最小面**。
+        **`confidence_score` / `decision_recommendation` / `risk_signals` は変更しない**（011 正本は `ConfidenceEvaluation` の列）。
+        `schema_ref`: `ti.mvp_011_review_state_reference.v1`。
+        **`mvp_005_canonical_summary`**（含 **`unresolved_work_present`**）は **005 観測の参照**であり、011 のスコア／推奨とは**別系統**（011 は未解決を独自 signal として再定義しない）。
+        **応答ではトップレベル `review_state_reference` キーは常に存在する**。参照先セッションが無い場合、内側の **`mvp_005_canonical_summary` は `null` になり得る**（011 本体フィールドは不変）。
+      additionalProperties: true
+
+    Mvp013GenerationConstraintsReference:
+      type: object
+      description: |
+        Django `mvp_013_suggestion_context.build_mvp_013_generation_constraints_reference`。
+        **`primary_constraints_from_005`**: 005 正本を一次制約として読んだ結果（再定義しない）。**`unresolved_work_present`** 等の未解決観測はここに**含まれうる**（`mvp_005_canonical_summary` と同型）。013 は **read-only に参照するだけ**で、未解決を根拠に**候補昇格・抑制を自動決定しない**（gating 本格化は未着手）。
+        **`auxiliary_signals_from_011`**: 同一 `metadata` の**最新** `ConfidenceEvaluation` から読む **read-only** の写し（再計算しない）。少なくとも `evaluation_ref` / `confidence_score` / `decision_recommendation` / `risk_signals`。**`risk_signals`** は 011 行の **`risk_signals` 列と同じ JSON 配列**（**string[] 固定ではない**。要素は object を含みうる。MVP では item の厳密 schema は固定しない）。
+        **`analysis_candidates` を自動変更しない**。suppression の正本は 005。未解決を確定候補に昇格しない。
+        `schema_ref`: `ti.mvp_013_generation_constraints_reference.v1`。`semantic_lock_in`: false。
+        **応答ではトップレベル `generation_constraints_reference` キーは常に存在する**。該当する 005 セッション／011 評価が無い場合、**`primary_constraints_from_005` / `auxiliary_signals_from_011` は `null` になり得る**（013 は新規作成せず**参照のみ**）。
+      additionalProperties: true
+
     TiMvpConfidenceEvaluation:
       type: object
       description: |
         Django `ConfidenceEvaluationSerializer` の事実形（011 MVP）。`decision_recommendation` は **JSON object**。
+        **`confidence_score` / `decision_recommendation`**: 011 の評価出力の正本（本レスポンスのトップレベル）。**`risk_signals`**: 011 の**補助 signal**の一つ。JSON **配列**で、要素は **object を含みうる**（**string[] ではない**）。MVP では要素の厳密 schema は固定しない（`items: {}`）。
+        **`review_state_reference`**: 005 正本（最新 session）の観測を**読み取り専用**で添付。**011 本体の上書きではない**（`confidence_score` 等は不変）。
+        **`GET .../suggestion-runs/...`** の `generation_constraints_reference.auxiliary_signals_from_011` は、同一 metadata の最新評価について **本リソースと同じ `risk_signals` 等の read-only 写し**を載せる（013 は参照のみ）。
         Phase 4 で `scores` / `explanation` / `table_id` 等を **additive** 追加し 006 に寄せる。
       required:
         - evaluation_ref
@@ -982,6 +1026,7 @@ components:
         - confidence_score
         - risk_signals
         - decision_recommendation
+        - review_state_reference
         - created_at
         - updated_at
       properties:
@@ -999,20 +1044,54 @@ components:
         risk_signals:
           type: array
           items: {}
+          description: |
+            011 の補助 signal。JSON 配列。**要素は object を含みうる**（`string[]` 固定ではない）。MVP では item の厳密 schema は固定しない。
         decision_recommendation:
           type: object
           additionalProperties: true
+        review_state_reference:
+          $ref: "#/components/schemas/Mvp011ReviewStateReference"
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+      example:
+        evaluation_ref: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        metadata_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        workspace_id: "ws-demo"
+        confidence_score: 0.72
+        risk_signals:
+          - code: "sample_noise"
+        decision_recommendation:
+          level: "review"
+          source: "011"
+        review_state_reference:
+          schema_ref: "ti.mvp_011_review_state_reference.v1"
+          semantic_lock_in: false
+          session_present: true
+          session_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+          mvp_005_canonical_summary:
+            schema_ref: "ti.mvp_005_canonical_review_summary.v1"
+            semantic_lock_in: false
+            review_state: "OPEN"
+            resolution_status: "PENDING"
+            resolution_grade: null
+            suppression_status: "NONE"
+            suppression_record_count: 0
+            unresolved_work_present: true
+            uncertainty_intake_present: true
+            from_004_review_required_snapshot: true
+            from_004_review_point_count_at_intake: 0
+        created_at: "2026-04-08T10:00:00Z"
+        updated_at: "2026-04-08T10:00:00Z"
 
     TiMvpHumanReviewSession:
       type: object
       description: |
         Django `HumanReviewSessionSerializer` の事実形（005 MVP）。`table_id` / `pending_questions` / `answers` は **含まない**。
+        **`mvp_005_canonical_summary`**: 005 正本状態の**観測用**サマリ（DB 行の写し・再定義なし）。自動解決しない。
         Phase 4 で 006 `HumanReviewSession` へ **additive** 拡張予定。
       required:
         - session_id
@@ -1021,6 +1100,7 @@ components:
         - state
         - review_required_snapshot
         - review_points_snapshot
+        - mvp_005_canonical_summary
         - created_at
         - updated_at
       properties:
@@ -1042,6 +1122,8 @@ components:
         resolution_grade:
           type: string
           nullable: true
+        mvp_005_canonical_summary:
+          $ref: "#/components/schemas/Mvp005CanonicalSummary"
         created_by_id:
           type: integer
           nullable: true
@@ -1051,6 +1133,122 @@ components:
         updated_at:
           type: string
           format: date-time
+      example:
+        session_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        metadata_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        workspace_id: "ws-demo"
+        state: "OPEN"
+        review_required_snapshot: true
+        review_points_snapshot: []
+        resolution_grade: null
+        mvp_005_canonical_summary:
+          schema_ref: "ti.mvp_005_canonical_review_summary.v1"
+          semantic_lock_in: false
+          review_state: "OPEN"
+          resolution_status: "PENDING"
+          resolution_grade: null
+          suppression_status: "NONE"
+          suppression_record_count: 0
+          unresolved_work_present: true
+          uncertainty_intake_present: true
+          from_004_review_required_snapshot: true
+          from_004_review_point_count_at_intake: 0
+        created_by_id: 42
+        created_at: "2026-04-08T10:00:00Z"
+        updated_at: "2026-04-08T10:00:00Z"
+
+    TiMvpSuggestionSet:
+      type: object
+      description: |
+        Django `SuggestionSetSerializer` 事実形（013 MVP）。`GET /suggestion-runs/{suggestion_run_ref}` の 200。
+        **`generation_constraints_reference`**: 005 を一次制約・011 を補助として**参照のみ**（候補配列を自動変更しない）。
+        **`analysis_candidates[]`**: MVP では **`category: summary_stub`** 等のスタブ候補がありうる。各要素の **`evidence`** は **004 メタデータ観測のトレース**（`source` / `ref` / 任意 `note`）を含みうる。**意味確定・gating・候補選別の正式 schema ではない**（`additionalProperties: true`）。
+        無印 `SuggestionSet` は 006 目標形として別スキーマを維持。
+      required:
+        - suggestion_run_id
+        - table_id
+        - analysis_candidates
+        - suppression_applied
+        - metadata_id
+        - generation_constraints_reference
+        - created_at
+        - updated_at
+      properties:
+        suggestion_run_id:
+          type: string
+          format: uuid
+          description: API パス `suggestion_run_ref` と同値。
+        table_id:
+          type: string
+          description: 001 アンカー。未バインド時は空文字列 `""` になりうる。
+        analysis_candidates:
+          type: array
+          description: |
+            013 MVP の候補オブジェクト配列。要素は **`evidence`（004 観測トレース）** や **`risk_notes`** を含みうる（**stub 根拠の説明**。正式な候補確定や gating ではない）。
+          items:
+            type: object
+            additionalProperties: true
+        suppression_applied:
+          type: array
+          description: 005 の `SuppressionRecord` を読んだ**監査ログ**。正本は 005。
+          items:
+            type: object
+            additionalProperties: true
+        metadata_id:
+          type: string
+          format: uuid
+        generation_constraints_reference:
+          $ref: "#/components/schemas/Mvp013GenerationConstraintsReference"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      example:
+        suggestion_run_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+        table_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+        analysis_candidates:
+          - candidate_id: "c1111111-1111-4111-8111-111111111111"
+            category: "summary_stub"
+            priority: 0
+            readiness: "low"
+            evidence:
+              - source: "004.metadata_id"
+                ref: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+              - source: "004.measures[]"
+                ref: "m1"
+                note: "name=amount"
+            risk_notes:
+              - "MVP stub: full SuggestionGeneration (013) not implemented"
+              - "Stub trace: 004.measures non-empty; 005/011 do not select candidate (see generation_constraints_reference)."
+        suppression_applied: []
+        metadata_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        generation_constraints_reference:
+          schema_ref: "ti.mvp_013_generation_constraints_reference.v1"
+          semantic_lock_in: false
+          primary_constraints_from_005:
+            schema_ref: "ti.mvp_005_canonical_review_summary.v1"
+            semantic_lock_in: false
+            review_state: "OPEN"
+            resolution_status: "PENDING"
+            resolution_grade: null
+            suppression_status: "NONE"
+            suppression_record_count: 0
+            unresolved_work_present: true
+            uncertainty_intake_present: true
+            from_004_review_required_snapshot: true
+            from_004_review_point_count_at_intake: 0
+          auxiliary_signals_from_011:
+            evaluation_ref: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+            confidence_score: 0.55
+            decision_recommendation:
+              level: "review_optional"
+              source: "011"
+            risk_signals:
+              - code: "mvp"
+        created_at: "2026-04-08T10:00:00Z"
+        updated_at: "2026-04-08T10:00:00Z"
 
     JobAcceptedResponse:
       description: 後方互換名。**MVP 実装は `TiMvpJobSummary` と同一形**。
@@ -1595,7 +1793,9 @@ components:
 
     SuggestionCandidate:
       type: object
-      description: 013 正本。decision はここに含めない（002 は JudgmentResult 側）。
+      description: |
+        013 正本。decision はここに含めない（002 は JudgmentResult 側）。
+        MVP stub 候補では **`evidence`** に **004 `AnalysisMetadata` 観測のトレース**（`004.metadata_id` / `004.measures[]` 等）が載りうる。**候補確定・gating ではない**（strict schema 化はしない）。
       properties:
         candidate_id:
           type: string

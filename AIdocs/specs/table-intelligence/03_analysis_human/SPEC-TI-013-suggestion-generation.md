@@ -2,9 +2,9 @@
 id: SPEC-TI-013
 title: 分析候補生成仕様書
 status: Draft
-version: 0.2.1
+version: 0.2.2
 owners: []
-last_updated: 2026-04-07
+last_updated: 2026-04-08
 depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-004, SPEC-TI-005, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010, SPEC-TI-011]
 ---
 
@@ -71,6 +71,20 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-004, SPEC-TI-005, SP
 | [SPEC-TI-006](../01_foundation/SPEC-TI-006-io-data.md) | 将来 **`SuggestionSet` の JSON Schema 正本**（Phase4）。 |
 | [SPEC-TI-009](../01_foundation/SPEC-TI-009-table-taxonomy.md) | **表タイプ語彙**。013 は新ラベルを増やさない。 |
 | [SPEC-TI-010](../01_foundation/SPEC-TI-010-heading-model.md) | 見出しの正本。013 は**改変しない**。 |
+
+### Backend MVP API: `generation_constraints_reference`（参照のみ）
+
+- **`GET /suggestion-runs/{suggestion_run_ref}`** の応答に含まれる **`generation_constraints_reference`**（`schema_ref`: `ti.mvp_013_generation_constraints_reference.v1` 想定）は、同一 `metadata` に紐づく **最新 005 セッション**由来の **`primary_constraints_from_005`**（`mvp_005_canonical_summary` と同型の観測）と、**最新 011 評価**由来の **`auxiliary_signals_from_011`** を**読み取り専用**で載せる。**`primary_constraints_from_005`** には **`unresolved_work_present`** 等の **005 未解決観測が含まれうる**。013 は **参照のみ**であり、未解決を根拠に **候補昇格・候補抑制を自動決定しない**（gating 本格化は未着手）。**`GET .../candidates`** も **同系統の read-only 参照面**（トップレベル `generation_constraints_reference`）を持つ。  
+- **`auxiliary_signals_from_011`** は、その **`ConfidenceEvaluation` 行**に既に格納されている signal の**写し**である。少なくとも **`evaluation_ref`**（= `evaluation_id`）、**`confidence_score`**、**`decision_recommendation`**、**`risk_signals`** を含む。**`risk_signals`** は **JSON 配列**であり、**要素は object を含みうる**（**string[] 固定ではない**）。013 は**新しい補助 signal を生成しない**（再計算しない）。  
+- **`GET /suggestion-runs/{suggestion_run_ref}/candidates`** の応答にも、上記と**同型・同 builder 由来**の **`generation_constraints_reference`** を**トップレベルに**含める（`candidates[]` とは別キー。候補 1 件ごとへの複製はしない）。**候補の確定・suppression 正本の変更は行わない**。  
+- **`analysis_candidates[]` / `candidates[]` を本ブロックによって自動変更しない**。**suppression の正本は 005**（`suppression_applied` は 005 を読んだ監査ログ）。**未解決を確定済み候補に昇格させない**。  
+- OpenAPI の **`TiMvpSuggestionSet`** / **`listSuggestionCandidates` 200** と [SPEC-TI-014](../04_system/SPEC-TI-014-api.md) §19 を参照。
+
+### Backend MVP: stub `analysis_candidates` の根拠トレース（Pattern B）
+
+- 現行 MVP では **`measures` が非空**なら **1 件**の **`category: summary_stub`** を返し、**空なら 0 件**である。**priority・readiness 等はスタブ的固定**のまま（本格カテゴリ・gating は未着手）。
+- 各候補の **`evidence` / `risk_notes`** に **004 `AnalysisMetadata` 観測**（`metadata_id`、`dataset_id`、`dimensions` / `measures` の id・name、`time_axis` の有無等）を **トレースとして**載せうる。**意味確定・taxonomy 確定・semantic lock-in ではない**。
+- **005 / 011 は候補の採否・順位決定に使わない**（read-only は **`generation_constraints_reference`** の GET 応答のみ。§19・014 §19.5 参照）。
 
 ### 011 信頼度スコアリングとの接続境界（MVP）
 

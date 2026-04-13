@@ -1,6 +1,6 @@
 # 表インテリジェンス仕様書 索引（SPEC-TI-001〜015 登録欄）
 
-最終更新: 2026-04-07
+最終更新: 2026-04-08（OpenAPI 0.1.14-draft：013 stub `analysis_candidates` の 004 根拠トレース）
 
 | ID | 題名 | 版 | 状態 | パス（予定／実在） |
 |----|------|-----|------|-------------------|
@@ -24,7 +24,10 @@
 
 - [実装前レビュー観点整理](実装前レビュー観点整理_table-intelligence.md)（実装着手前のチェックリスト・アジェンダ、`0.1`）
 - [API × DTO × DB 対応表](API_DTO_DB対応表_table-intelligence.md)（014 / 006 / 015 / OpenAPI / DDL の横断ブレ止め、`0.1`）
-- [OpenAPI 叩き台（draft）](../specs/table-intelligence/04_system/openapi/table-intelligence-openapi-draft.yaml)（SPEC-TI-014＋006 の機械可読ドラフト、`0.1.0-draft`）
+- [OpenAPI 叩き台（draft）](../specs/table-intelligence/04_system/openapi/table-intelligence-openapi-draft.yaml)（SPEC-TI-014＋006 の機械可読ドラフト、**0.1.14-draft**：013 **`analysis_candidates`** の **004 観測トレース**（`evidence` / `risk_notes`））
+- [SPEC-TI-014 §19.4 caution/readiness 的な読み方（非正規化ガイド）](../specs/table-intelligence/04_system/SPEC-TI-014-api.md#s194-caution-readiness-reading-guide)（既存 signal の補助的な見方。**新 API フィールドなし**）
+- [SPEC-TI-014 §19.5 stub analysis_candidates の根拠トレース](../specs/table-intelligence/04_system/SPEC-TI-014-api.md#s195-stub-analysis-candidates-004-trace)（004 `evidence` / `risk_notes`。gating ではない）
+- [SPEC-TI-014 §20 未着手境界と次実装前提](../specs/table-intelligence/04_system/SPEC-TI-014-api.md#20-未着手境界と次実装前提)（MVP 収束後の backend 着手前に、触ってよい範囲と未着手論点の**主置き場**）
 - [Table Intelligence API — 利用者向けエラー一覧](../specs/table-intelligence/04_system/GUIDE-TI-table-intelligence-api-errors.md)（主要 operation の成功/400/401/404/409・404 マスク・将来枠、`0.1`）
 - [DDL 叩き台（draft）](../specs/table-intelligence/04_system/sql/table-intelligence-ddl-draft.sql)（SPEC-TI-015 ベースの PostgreSQL 初期 DDL、`0.1.0-draft`）
 - [表解析仕様群_最終整合レビュー完了報告.md](表解析仕様群_最終整合レビュー完了報告.md)（仕様フェーズの節目・引き継ぎ）

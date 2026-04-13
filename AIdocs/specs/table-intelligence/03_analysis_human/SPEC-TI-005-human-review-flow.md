@@ -4,7 +4,7 @@ title: 人確認フロー仕様書
 status: Draft
 version: 0.2.2
 owners: []
-last_updated: 2026-04-07
+last_updated: 2026-04-08
 depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-004, SPEC-TI-006, SPEC-TI-009, SPEC-TI-010, SPEC-TI-011, SPEC-TI-013]
 ---
 
@@ -74,6 +74,13 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-004, SPEC-TI-006, SP
 - **004** の整理結果を **「完全確定済み」**とはみなさない。**意味確定**の正本分担は上流の各仕様に残し、**005** は**人確認**（質問化・**確認状態**・部分解決／未解消／エスカレーション・**再判定／再正規化／上位仕様**への戻しに使う**レビュー結果保持**）を担う。  
 - **005** は**分析意味の正本を新規定義する層ではない**。**011**（信頼度）・**013**（候補）の**最終接続**を壊さない前提とする。  
 - 004 側の整理は **[SPEC-TI-004](SPEC-TI-004-analysis-metadata.md)** の「005 人確認フローへの受け渡し（MVP 境界）」を参照。
+
+### Backend MVP API: `mvp_005_canonical_summary`（観測）
+
+- **正本**は引き続き **`HumanReviewSession` 行**、**`SuppressionRecord`**、および snapshot 列（`review_required_snapshot` / `review_points_snapshot`）である。  
+- API 応答に含まれる **`mvp_005_canonical_summary`**（`schema_ref`: `ti.mvp_005_canonical_review_summary.v1` 想定）は、上記正本から組み立てる **読み取り専用の観測ブロック**であり、**新たな正本ではない**。自動解決・意味確定を行わない（`semantic_lock_in` は false）。  
+- **`unresolved_work_present`** および **`review_state` / `resolution_status` / `resolution_grade` / `suppression_status` / `suppression_record_count` / `uncertainty_intake_present` / `from_004_*`** は、いずれも **005 canonical summary 上で観測される指標**である。**正本そのものではなく**、正本行・snapshot から導いた **派生要約**である。**011 / 013 はこれらを read-only で参照する**（未解決を根拠とした候補昇格・抑制の自動ルール化は MVP では行わない）。  
+- OpenAPI の **`TiMvpHumanReviewSession`** と [SPEC-TI-014](../04_system/SPEC-TI-014-api.md) §19 を参照。
 
 ### 011 信頼度スコアリングへの受け渡し（MVP 境界）
 

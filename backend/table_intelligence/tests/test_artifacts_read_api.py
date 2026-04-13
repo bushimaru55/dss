@@ -15,10 +15,14 @@ from table_intelligence.models import (
     AnalysisJob,
     AnalysisMetadata,
     ConfidenceEvaluation,
+    HumanReviewSession,
     JobStatus,
     NormalizedDataset,
+    ReviewSessionState,
     TableScope,
 )
+from table_intelligence.mvp_005_review_state import MVP_005_CANONICAL_REVIEW_SUMMARY_SCHEMA_REF
+from table_intelligence.mvp_011_evaluation_context import MVP_011_REVIEW_STATE_REFERENCE_SCHEMA_REF
 from table_intelligence.mvp_004_dataset_inputs import apply_mvp_004_dataset_input_reflection
 
 
@@ -178,6 +182,34 @@ def test_get_evaluation(auth_client, ti_evaluation, ti_metadata):
     assert res.data["metadata_id"] == str(ti_metadata.metadata_id)
     assert res.data["decision_recommendation"] == {"level": "review", "source": "011"}
     assert "decision" not in res.data
+    ref = res.data["review_state_reference"]
+    assert ref["schema_ref"] == MVP_011_REVIEW_STATE_REFERENCE_SCHEMA_REF
+    assert ref["session_present"] is False
+    assert ref["mvp_005_canonical_summary"] is None
+    assert ref["semantic_lock_in"] is False
+
+
+@pytest.mark.django_db
+def test_get_evaluation_includes_005_review_reference_when_session_exists(
+    auth_client, ti_evaluation, ti_metadata, user
+):
+    HumanReviewSession.objects.create(
+        metadata=ti_metadata,
+        workspace_id="ws-ti",
+        state=ReviewSessionState.OPEN,
+        review_required_snapshot=True,
+        review_points_snapshot=[{"id": "p1"}],
+        created_by=user,
+    )
+    url = reverse("ti-evaluation-detail", kwargs={"evaluation_ref": ti_evaluation.evaluation_id})
+    res = auth_client.get(url)
+    assert res.status_code == 200
+    ref = res.data["review_state_reference"]
+    assert ref["session_present"] is True
+    assert ref["session_id"]
+    summ = ref["mvp_005_canonical_summary"]
+    assert summ["schema_ref"] == MVP_005_CANONICAL_REVIEW_SUMMARY_SCHEMA_REF
+    assert summ["semantic_lock_in"] is False
 
 
 @pytest.mark.django_db

@@ -2,9 +2,9 @@
 id: SPEC-TI-011
 title: 信頼度スコアリング仕様書
 status: Draft
-version: 0.3.2
+version: 0.3.3
 owners: []
-last_updated: 2026-04-07
+last_updated: 2026-04-08
 depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-004, SPEC-TI-005, SPEC-TI-006]
 ---
 
@@ -72,6 +72,19 @@ depends_on: [SPEC-TI-001, SPEC-TI-002, SPEC-TI-003, SPEC-TI-004, SPEC-TI-005, SP
 | [SPEC-TI-005](../03_analysis_human/SPEC-TI-005-human-review-flow.md) | **`review_session_resolution_grade`**・**`human_resolved_uncertainty[]`**・**`suggestion_suppression_level`**（005 が宣言する前提と**整合**）。 |
 | [SPEC-TI-006](../01_foundation/SPEC-TI-006-io-data.md) | 将来 **`ConfidenceScore`** 等のエンティティ（Phase4）。初版は**概念出力**。 |
 | SPEC-TI-013 | スコアを**抑制・注意付け**の**入力**とする。 |
+
+### Backend MVP API: `review_state_reference`（005 正本の読み取り面）
+
+- **`GET /evaluations/{evaluation_ref}`** の応答に含まれる **`review_state_reference`**（`schema_ref`: `ti.mvp_011_review_state_reference.v1` 想定）は、同一 `metadata` の **最新 `HumanReviewSession`** から **`mvp_005_canonical_summary`** を**読み取り専用**で参照するための最小ブロックである。**`mvp_005_canonical_summary`**（**`unresolved_work_present`** を含む）は **005 由来の観測**であり、**011 自身の `confidence_score` / `risk_signals` / `decision_recommendation` とは別系統**である。011 は未解決観測を **独自の signal として再定義・複製しない**（Pattern A で整理済みの既存補助 signal のみ）。  
+- **`confidence_score` / `risk_signals` / `decision_recommendation` は 011 の正本のまま**であり、本ブロックによって**上書きされない**。011 が 005 を正本として食い替えることはない。  
+- OpenAPI の **`TiMvpConfidenceEvaluation`** と [SPEC-TI-014](../04_system/SPEC-TI-014-api.md) §19 を参照。
+
+### Backend MVP API: 011 の補助 signal（`ConfidenceEvaluation` トップレベル）
+
+- **`confidence_score`** と **`decision_recommendation`** は、011 が返す**評価出力の本体**（002 の `decision` とは別フィールド）である。  
+- **`risk_signals`** は 011 が保持する**補助 signal**の一つである。JSON **配列**であり、**要素は object を含みうる**（**`string[]` 固定ではない**）。MVP では**要素の厳密 JSON Schema は固定しない**（クライアントは未知キーに tolerant であること）。  
+- **`review_state_reference`** は **005** の `mvp_005_canonical_summary` 相当の**観測**を読み取り専用で載せるブロックであり、**011 本体の `confidence_score` / `risk_signals` / `decision_recommendation` を上書きしない**。  
+- **[SPEC-TI-013](../03_analysis_human/SPEC-TI-013-suggestion-generation.md)** の **`generation_constraints_reference.auxiliary_signals_from_011`** は、同一 `metadata` の**最新** `ConfidenceEvaluation` について、上記 **`evaluation_ref` / `confidence_score` / `decision_recommendation` / `risk_signals` の read-only 写し**を載せる（013 は新規に signal を生成しない）。
 
 ### 005 人確認結果との接続境界（MVP）
 

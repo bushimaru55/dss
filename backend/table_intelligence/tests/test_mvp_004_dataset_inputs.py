@@ -19,6 +19,8 @@ from table_intelligence.mvp_004_dataset_inputs import (
     build_mvp_004_dataset_input_observation,
     summarize_column_slots_for_observation,
     trace_kind_counts,
+    trace_mvp_input_provenance_counts,
+    trace_row_index_fallback_banner_present,
 )
 
 
@@ -26,6 +28,19 @@ def test_trace_kind_counts_empty():
     assert trace_kind_counts(None) == {}
     assert trace_kind_counts("x") == {}
     assert trace_kind_counts([{"kind": "a"}, {"kind": "a"}, {}]) == {"a": 2, "unknown": 1}
+
+
+def test_trace_mvp_input_provenance_counts_and_fallback_banner():
+    tm = [
+        {"kind": "row_index_enumeration_source", "mvp_input_provenance": "table_scope_row_range_fallback"},
+        {"kind": "x", "mvp_input_provenance": "normalization_input_hints"},
+    ]
+    assert trace_mvp_input_provenance_counts(tm) == {
+        "table_scope_row_range_fallback": 1,
+        "normalization_input_hints": 1,
+    }
+    assert trace_row_index_fallback_banner_present(tm) is True
+    assert trace_row_index_fallback_banner_present([{"kind": "cell_value_transcribed"}]) is False
 
 
 def test_build_observation_order_and_preview():
@@ -52,6 +67,79 @@ def test_build_observation_order_and_preview():
     css = obs["column_slots_summary"]
     assert css["read"] is False
     assert css["entry_count"] == 0
+    assert obs["trace_map_summary"]["mvp_input_provenance_counts"] == {}
+    assert obs["trace_map_summary"]["row_index_fallback_trace_present"] is False
+    assert obs["rows_preview"]["row_index_enumeration_source_counts"] == {}
+    assert obs["rows_preview"]["normalization_hint_semantic_lock_in_non_false_count"] == 0
+    assert obs.get("payload_root_semantic_lock_in") is None
+    assert obs.get("uncertainty_provenance_note")
+
+
+def test_build_observation_003_provenance_minimal_path():
+    """003 相当の provenance 付き payload を 004 が観測する（意味確定はしない）。"""
+    payload = {
+        "normalization_input_hints": {
+            "schema_ref": "ti.normalization_hints.v1",
+            "by_row_index": {"0": "ROW_DETAIL"},
+            "by_column_index": {},
+        },
+        "trace_map": [
+            {
+                "kind": "cell_value_transcribed",
+                "mvp_input_provenance": "cells_raw_display",
+                "semantic_lock_in": False,
+            }
+        ],
+        "rows": [
+            {
+                "values": {"c0": "x"},
+                "normalization_hint": {
+                    "from_002_row_kind": "ROW_DETAIL",
+                    "semantic_lock_in": False,
+                    "row_index_enumeration_source": "normalization_input_hints_by_row_index",
+                },
+            }
+        ],
+    }
+    obs = build_mvp_004_dataset_input_observation(payload)
+    assert obs["semantic_lock_in"] is False
+    assert obs["trace_map_summary"]["mvp_input_provenance_counts"] == {"cells_raw_display": 1}
+    assert obs["trace_map_summary"]["row_index_fallback_trace_present"] is False
+    assert obs["rows_preview"]["row_index_enumeration_source_counts"] == {
+        "normalization_input_hints_by_row_index": 1,
+    }
+
+
+def test_build_observation_fallback_trace_and_row_enumeration_observed():
+    payload = {
+        "normalization_input_hints": {"by_row_index": {}, "by_column_index": {}},
+        "trace_map": [
+            {
+                "kind": "row_index_enumeration_source",
+                "mvp_input_provenance": "table_scope_row_range_fallback",
+                "table_row_min": 2,
+                "table_row_max": 4,
+                "semantic_lock_in": False,
+            },
+        ],
+        "rows": [
+            {
+                "values": {},
+                "normalization_hint": {
+                    "semantic_lock_in": False,
+                    "row_index_enumeration_source": "table_scope_row_range_fallback",
+                },
+            }
+        ],
+    }
+    obs = build_mvp_004_dataset_input_observation(payload)
+    assert obs["trace_map_summary"]["row_index_fallback_trace_present"] is True
+    assert obs["trace_map_summary"]["mvp_input_provenance_counts"] == {
+        "table_scope_row_range_fallback": 1,
+    }
+    assert obs["rows_preview"]["row_index_enumeration_source_counts"] == {
+        "table_scope_row_range_fallback": 1,
+    }
 
 
 def test_build_observation_column_slots_summary():
@@ -76,6 +164,7 @@ def test_build_observation_column_slots_summary():
     assert css["hints_from_002_present_count"] == 1
     assert css["slot_id_values_key_preview"][0]["has_hint_from_002"] is True
     assert css["slot_id_values_key_preview"][1]["has_hint_from_002"] is False
+    assert css.get("semantic_lock_in_non_false_entry_count") == 0
 
 
 def test_summarize_column_slots_invalid():
