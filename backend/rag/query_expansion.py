@@ -7,7 +7,7 @@ import os
 import re
 from typing import Any
 
-from ai.client import get_openai_client
+from ai.client import get_openai_api_key, get_openai_client
 
 # (質問に含まれるときに検索語に追加するトークン群)
 EXPANSIONS: list[tuple[str, list[str]]] = [
@@ -57,7 +57,7 @@ def should_use_hyde(query: str) -> bool:
 
 def rewrite_query_with_openai(query: str) -> str:
     q = (query or "").strip()
-    if not q or not os.environ.get("OPENAI_API_KEY"):
+    if not q or not get_openai_api_key():
         return q
     if not _bool_env("RAG_ENABLE_QUERY_REWRITE", default=True):
         return q
@@ -81,7 +81,7 @@ def rewrite_query_with_openai(query: str) -> str:
 
 def generate_hypothetical_query_passage(query: str) -> str:
     q = (query or "").strip()
-    if not q or not should_use_hyde(q) or not os.environ.get("OPENAI_API_KEY"):
+    if not q or not should_use_hyde(q) or not get_openai_api_key():
         return ""
     try:
         client = get_openai_client()

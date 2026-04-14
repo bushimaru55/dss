@@ -1,0 +1,44 @@
+{% extends "admin/base.html" %}
+{% load i18n %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  /* ヘッダー左（サイト名の横）：スーパーユーザーのみ */
+  #header #branding .dss-admin-api-key-nav {
+    display: inline-block;
+    margin-left: 1.25rem;
+    vertical-align: middle;
+    font-size: 0.95rem;
+  }
+  #header #branding .dss-admin-api-key-nav a {
+    color: #fff;
+    font-weight: 600;
+    text-decoration: underline;
+  }
+  #header #branding .dss-admin-api-key-nav a:focus,
+  #header #branding .dss-admin-api-key-nav a:hover {
+    color: #f0f0f0;
+  }
+</style>
+{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="{% url 'admin:index' %}">{{ site_header|default:_('Django administration') }}</a></div>
+{% if user.is_superuser %}
+<span class="dss-admin-api-key-nav"><a href="{% url 'admin-openai-api-key' %}">{% translate "APIキー設定" %}</a></span>
+{% endif %}
+{% if user.is_anonymous %}
+  {% include "admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}
+
+{% block userlinks %}
+{% if user.is_superuser %}
+<a href="{% url 'admin-openai-api-key' %}">APIキー設定</a> /
+{% endif %}
+{{ block.super }}
+{% endblock %}

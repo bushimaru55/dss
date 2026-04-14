@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-from ai.client import get_openai_client
+from ai.client import get_openai_api_key, get_openai_client
 from analysis_runs.audit_log import append_audit_record_for_run
 from analysis_runs.chat_intent import build_semantic_column_hints, detect_ranking_intent
 from analysis_runs.models import AnalysisRun
@@ -193,7 +193,7 @@ def execute_analysis(dataset: Dataset, question: str) -> dict[str, Any]:
 def _compose_answer_with_llm_or_fallback(
     question: str, facts: dict[str, Any], rag_items: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    if not os.environ.get("OPENAI_API_KEY"):
+    if not get_openai_api_key():
         return _fallback_answer(question, facts, rag_items)
 
     try:

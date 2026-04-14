@@ -8,7 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from ai.client import get_openai_client
+from ai.client import get_openai_api_key, get_openai_client
 from rag.models import RagChunk
 from rag.query_expansion import prepare_search_query
 
@@ -108,7 +108,7 @@ def _rank_map(scores: list[tuple[int, float]]) -> dict[int, int]:
 
 
 def _embed_texts(texts: list[str]) -> list[list[float]] | None:
-    if not texts or not os.environ.get("OPENAI_API_KEY"):
+    if not texts or not get_openai_api_key():
         return None
     try:
         client = get_openai_client()
@@ -141,7 +141,7 @@ def _apply_rrf(
 
 
 def _rerank_with_openai(query: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not items or not os.environ.get("OPENAI_API_KEY"):
+    if not items or not get_openai_api_key():
         return items
     if not _bool_env("RAG_ENABLE_RERANK", default=True):
         return items
@@ -195,7 +195,7 @@ def search_chunks(query: str, limit: int = 5, source_types: list[str] | None = N
     text_rank = _rank_map([(cid, s) for cid, s, _ in text_scored])
 
     dense_rank: dict[int, int] = {}
-    dense_enabled = _bool_env("RAG_ENABLE_DENSE_HYBRID", default=True) and bool(os.environ.get("OPENAI_API_KEY"))
+    dense_enabled = _bool_env("RAG_ENABLE_DENSE_HYBRID", default=True) and bool(get_openai_api_key())
     if dense_enabled:
         candidate_limit = max(limit, _int_env("RAG_HYBRID_CANDIDATES", 80))
         top_text_candidates = sorted(text_scored, key=lambda x: x[1], reverse=True)[:candidate_limit]

@@ -19,6 +19,7 @@ __pycache__/
 backend/media/
 backend/staticfiles/
 backend/logs/*.jsonl
+backend/logs/*.log
 .pytest_cache/
 .mypy_cache/
 htmlcov/

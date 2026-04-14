@@ -1,9 +1,56 @@
 from __future__ import annotations
 
+import json
+import logging
+import os
 import re
 from typing import Any
 
 from datasets.models import SemanticLabel
+
+logger = logging.getLogger(__name__)
+
+
+def _semantic_openai_fallback_enabled() -> bool:
+    return os.environ.get("SEMANTIC_OPENAI_FALLBACK", "").strip().lower() in ("1", "true", "yes")
+
+
+_SEMANTIC_LABEL_VALUES = [c.value for c in SemanticLabel]
+
+
+def _openai_infer_semantic_label(column_name: str, inferred_type: str, sample_values: list[Any]) -> str:
+    from ai.client import get_openai_api_key, get_openai_client
+
+    if not get_openai_api_key():
+        return SemanticLabel.UNKNOWN
+    samples = sample_values[:8]
+    sample_str = json.dumps([str(v) for v in samples], ensure_ascii=False)[:800]
+    allowed = ", ".join(_SEMANTIC_LABEL_VALUES)
+    prompt = (
+        "あなたは表の列の意味を分類します。次の列について、許容値のいずれかひとつだけを JSON で返してください。\n"
+        f'形式: {{"semantic_label": "<値>"}}\n'
+        f"許容値（そのまま）: {allowed}\n"
+        "意味が全く判断できない場合のみ semantic_label に unknown を使ってください。\n"
+        "列が明らかに分析対象外（空欄のみ・連番IDのみで意味がない等）なら ignore も可。\n"
+        f"列名: {column_name}\n"
+        f"推定型: {inferred_type}\n"
+        f"サンプル値（JSON）: {sample_str}\n"
+    )
+    model = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
+    client = get_openai_client()
+    resp = client.responses.create(model=model, input=prompt, temperature=0)
+    text = getattr(resp, "output_text", "") or ""
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return SemanticLabel.UNKNOWN
+    raw = data.get("semantic_label")
+    if raw is None:
+        return SemanticLabel.UNKNOWN
+    val = str(raw).strip().lower()
+    if val in _SEMANTIC_LABEL_VALUES:
+        return val
+    return SemanticLabel.UNKNOWN
 
 
 # 先に具体的なパターン、後に汎用（最初の一致を採用）
@@ -55,4 +102,10 @@ def infer_semantic_label(column_name: str, inferred_type: str, sample_values: li
         if any(x in joined for x in ("¥", "円", "jpy")):
             return SemanticLabel.AMOUNT_JPY
         return SemanticLabel.AMOUNT
+    if _semantic_openai_fallback_enabled():
+        try:
+            return _openai_infer_semantic_label(key, inferred_type, sample_values)
+        except Exception:
+            logger.exception("OpenAI semantic fallback failed for column=%r", column_name)
+            return SemanticLabel.UNKNOWN
     return SemanticLabel.UNKNOWN

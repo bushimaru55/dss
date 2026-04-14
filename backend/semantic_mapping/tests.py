@@ -26,3 +26,29 @@ def test_sales_sample_headers():
 
 def test_amount_jpy_from_yen_in_name_when_number():
     assert infer_semantic_label("売上_円計", "number", []) == SemanticLabel.AMOUNT_JPY
+
+
+def test_unknown_without_openai_fallback(monkeypatch):
+    monkeypatch.delenv("SEMANTIC_OPENAI_FALLBACK", raising=False)
+    assert infer_semantic_label("社内コード_αβ", "string", ["x", "y"]) == SemanticLabel.UNKNOWN
+
+
+def test_openai_fallback_when_enabled(monkeypatch):
+    monkeypatch.setenv("SEMANTIC_OPENAI_FALLBACK", "1")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    class _Resp:
+        output_text = '{"semantic_label": "memo"}'
+
+    class _Responses:
+        def create(self, **kwargs):
+            return _Resp()
+
+    class _Client:
+        def __init__(self):
+            self.responses = _Responses()
+
+    monkeypatch.setattr("ai.client.get_openai_client", lambda: _Client())
+
+    got = infer_semantic_label("社内コード_αβ", "string", ["備考欄です"])
+    assert got == SemanticLabel.MEMO
