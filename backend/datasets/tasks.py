@@ -139,7 +139,9 @@ def profile_dataset(dataset_id: int) -> None:
             }
             profiling_run.save(update_fields=["status", "summary", "updated_at"])
 
-        infer_semantic_columns.delay(dataset_id)
+        # 同期実行: 直後に generate_suggestions_for_dataset 等が走る UI/API で
+        # 列の semantic_label が未確定のままになるのを防ぐ（.delay だと常に unknown 扱い）
+        infer_semantic_columns(dataset_id)
     except Exception as exc:
         logger.exception("profile_dataset failed dataset_id=%s", dataset_id)
         dataset.status = DatasetStatus.ERROR

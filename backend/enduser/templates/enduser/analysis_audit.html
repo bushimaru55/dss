@@ -1,0 +1,62 @@
+{% extends "enduser/base.html" %}
+{% load review_extras %}
+{% block content %}
+<div class="card">
+  <h2>分析レビュー用ログ</h2>
+  <p class="muted">ブラウザでデータセットに質問すると、サーバ上の JSONL に 1 行ずつ追記されます。<strong>Cursor</strong> でワークスペースの <code>{{ log_path_display }}</code> を開くと、エージェントが同じ内容を読み、ファクトと回答の突合（精度レビュー）に使えます。</p>
+  <p>
+    {% if log_exists %}
+    <a class="btn secondary" href="{% url 'enduser-analysis-audit-download' %}">JSONL をダウンロード</a>
+    {% else %}
+    <span class="muted">まだログファイルがありません。データセット詳細で質問を実行してください。</span>
+    {% endif %}
+  </p>
+</div>
+
+<div class="card">
+  <h3>直近のエントリ（最大 200 件・新しい順）</h3>
+  {% if not entries %}
+  <p class="muted">エントリはまだありません。</p>
+  {% else %}
+  <table>
+    <thead>
+      <tr>
+        <th>時刻</th>
+        <th>run</th>
+        <th>状態</th>
+        <th>疑いフラグ</th>
+        <th>質問（先頭）</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in entries %}
+      <tr>
+        <td style="white-space:nowrap;font-size:14px">{{ e.ts|default:"" }}</td>
+        <td>{{ e.run_id }}</td>
+        <td>{{ e.status }}</td>
+        <td>
+          {% if e.auto_checks and e.auto_checks.suspected_ungrounded_numbers %}
+          <span style="color:#b42318">要確認</span>
+          {% else %}
+          —
+          {% endif %}
+        </td>
+        <td style="max-width:360px;word-break:break-word">{{ e.question|truncatechars:80 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+{% for e in entries %}
+<div class="card" style="margin-top:8px">
+  <details>
+    <summary>run #{{ e.run_id }} / {{ e.status }} — 詳細 JSON</summary>
+    <pre style="white-space:pre-wrap;font-size:12px;margin-top:10px;max-height:480px;overflow:auto;background:#fafbfc;padding:12px;border-radius:8px;border:1px solid #e6e8ef">{{ e|as_json }}</pre>
+  </details>
+</div>
+{% endfor %}
+
+<p class="muted" style="margin-top:16px">※ <code>疑いフラグ</code> は回答中の数値がファクトに無い場合の簡易検出です（年号などで誤検知することがあります）。</p>
+{% endblock %}

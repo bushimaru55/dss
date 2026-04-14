@@ -1,3 +1,5 @@
+import re
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client
 from django.urls import reverse
@@ -30,7 +32,10 @@ def test_enduser_ui_upload_and_candidate_flow(db, user, workspace, monkeypatch):
     )
     assert new_res.status_code == 302
 
-    detail_url = new_res["Location"]
+    # アップロード直後は /datasets/<id>/import/ へ飛ぶ。prepare_analysis は詳細 URL のみ。
+    m = re.search(r"/datasets/(\d+)", new_res["Location"])
+    assert m
+    detail_url = reverse("enduser-dataset-detail", kwargs={"dataset_id": int(m.group(1))})
     run_res = c.post(detail_url, data={"action": "prepare_analysis"})
     assert run_res.status_code == 302
 

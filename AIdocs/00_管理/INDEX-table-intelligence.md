@@ -1,6 +1,6 @@
 # 表インテリジェンス仕様書 索引（SPEC-TI-001〜015 登録欄）
 
-最終更新: 2026-04-08（SPEC-TI-014 §19.6：observation trace と 006 logical path の区別）
+最終更新: 2026-04-08（次フェーズ設計整理メモ：004/006/013 接続方針）
 
 | ID | 題名 | 版 | 状態 | パス（予定／実在） |
 |----|------|-----|------|-------------------|
@@ -22,6 +22,7 @@
 
 ## 計画・規約
 
+- [次フェーズ設計整理（004 metadata / 006 logical path / 013）](次フェーズ設計整理_004-006-013.md)（MVP 後続の接続方針・優先順位。**確定仕様ではない**）
 - [実装前レビュー観点整理](実装前レビュー観点整理_table-intelligence.md)（実装着手前のチェックリスト・アジェンダ、`0.1`）
 - [API × DTO × DB 対応表](API_DTO_DB対応表_table-intelligence.md)（014 / 006 / 015 / OpenAPI / DDL の横断ブレ止め、`0.1`）
 - [OpenAPI 叩き台（draft）](../specs/table-intelligence/04_system/openapi/table-intelligence-openapi-draft.yaml)（SPEC-TI-014＋006 の機械可読ドラフト、**0.1.14-draft**：013 **`analysis_candidates`** の **004 観測トレース**（`evidence` / `risk_notes`））

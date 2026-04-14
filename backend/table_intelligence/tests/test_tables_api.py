@@ -7,6 +7,7 @@ GET /tables/* および GET /metadata/<id>/review-points/ の MVP テスト。
 from __future__ import annotations
 
 import uuid
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.urls import reverse
@@ -113,6 +114,108 @@ def test_table_summary_and_refs(auth_client, ti_table, ti_dataset, ti_metadata):
     refs = res.data["refs"]
     assert refs["dataset_id"] == str(ti_dataset.dataset_id)
     assert refs["metadata_id"] == str(ti_metadata.metadata_id)
+    assert refs["read_artifact_id"] == ""
+    assert refs["judgment_id"] == ""
+    assert "read_artifact_id" in refs
+    assert "judgment_id" in refs
+    assert all(isinstance(v, str) for v in refs.values())
+    assert all(v is not None for v in refs.values())
+
+
+@pytest.mark.django_db
+def test_table_summary_refs_includes_latest_read_artifact_and_judgment_ids(
+    auth_client, ti_table, ti_dataset, ti_metadata, ti_job
+):
+    tra = TableReadArtifact.objects.create(
+        workspace_id="ws-ti",
+        table=ti_table,
+        job=ti_job,
+        cells={},
+        merges=[],
+        parse_warnings=[],
+    )
+    jr = JudgmentResult.objects.create(
+        workspace_id="ws-ti",
+        table=ti_table,
+        job=ti_job,
+        decision=JudgmentDecision.NEEDS_REVIEW,
+        taxonomy_code=TI_TABLE_UNKNOWN,
+        evidence=[],
+    )
+    url = reverse("ti-table-summary", kwargs={"table_id": ti_table.table_id})
+    res = auth_client.get(url)
+    assert res.status_code == 200
+    refs = res.data["refs"]
+    assert refs["read_artifact_id"] == str(tra.artifact_id)
+    assert refs["judgment_id"] == str(jr.judgment_id)
+    assert refs["metadata_id"] == str(ti_metadata.metadata_id)
+    assert all(isinstance(v, str) for v in refs.values())
+    assert all(v is not None for v in refs.values())
+
+
+@pytest.mark.django_db
+def test_table_summary_refs_no_dataset_still_exposes_read_artifact_id(
+    auth_client, ti_table, ti_job
+):
+    """データセット列が無くても table 直結 latest の導線キーは refs に載る（Phase 1）。"""
+    tra = TableReadArtifact.objects.create(
+        workspace_id="ws-ti",
+        table=ti_table,
+        job=ti_job,
+        cells={},
+        merges=[],
+        parse_warnings=[],
+    )
+    url = reverse("ti-table-summary", kwargs={"table_id": ti_table.table_id})
+    res = auth_client.get(url)
+    assert res.status_code == 200
+    refs = res.data["refs"]
+    assert refs["dataset_id"] == ""
+    assert refs["metadata_id"] == ""
+    assert refs["read_artifact_id"] == str(tra.artifact_id)
+    assert refs["judgment_id"] == ""
+    assert all(isinstance(v, str) for v in refs.values())
+    assert all(v is not None for v in refs.values())
+
+
+@pytest.mark.django_db
+def test_table_summary_refs_read_artifact_only(
+    auth_client, ti_table, ti_dataset, ti_metadata, ti_job
+):
+    tra = TableReadArtifact.objects.create(
+        workspace_id="ws-ti",
+        table=ti_table,
+        job=ti_job,
+        cells={},
+        merges=[],
+        parse_warnings=[],
+    )
+    url = reverse("ti-table-summary", kwargs={"table_id": ti_table.table_id})
+    res = auth_client.get(url)
+    assert res.status_code == 200
+    refs = res.data["refs"]
+    assert refs["read_artifact_id"] == str(tra.artifact_id)
+    assert refs["judgment_id"] == ""
+
+
+@pytest.mark.django_db
+def test_table_summary_refs_judgment_only(
+    auth_client, ti_table, ti_dataset, ti_metadata, ti_job
+):
+    jr = JudgmentResult.objects.create(
+        workspace_id="ws-ti",
+        table=ti_table,
+        job=ti_job,
+        decision=JudgmentDecision.NEEDS_REVIEW,
+        taxonomy_code=TI_TABLE_UNKNOWN,
+        evidence=[],
+    )
+    url = reverse("ti-table-summary", kwargs={"table_id": ti_table.table_id})
+    res = auth_client.get(url)
+    assert res.status_code == 200
+    refs = res.data["refs"]
+    assert refs["read_artifact_id"] == ""
+    assert refs["judgment_id"] == str(jr.judgment_id)
 
 
 @pytest.mark.django_db
@@ -206,15 +309,129 @@ def test_table_artifacts_empty_when_no_dataset(auth_client, ti_table):
 
 
 @pytest.mark.django_db
-def test_metadata_review_points(auth_client, ti_metadata):
+def test_metadata_review_points(auth_client, ti_metadata, ti_dataset):
     url = reverse(
         "ti-metadata-review-points",
         kwargs={"metadata_id": ti_metadata.metadata_id},
     )
+    expected_points = [{"id": "rp1", "severity": "warn"}]
     res = auth_client.get(url)
     assert res.status_code == 200
     assert res.data["metadata_id"] == str(ti_metadata.metadata_id)
+    assert res.data["table_id"] == str(ti_dataset.table_id)
+    assert isinstance(res.data["table_id"], str)
+    assert res.data["review_required"] is True
+    assert isinstance(res.data["review_required"], bool)
+    assert res.data["dataset_id"] == str(ti_dataset.dataset_id)
+    assert isinstance(res.data["dataset_id"], str)
+    assert res.data["review_points"] == expected_points
+    assert "review_required" in res.data
+    assert "dataset_id" in res.data
+    assert "review_points_count" in res.data
+    assert isinstance(res.data["review_points_count"], int)
+    assert res.data["review_points_count"] == len(res.data["review_points"])
+    assert res.data["review_points_count"] == 1
+
+
+@pytest.mark.django_db
+def test_metadata_review_points_review_required_false(auth_client, ti_dataset):
+    meta = AnalysisMetadata.objects.create(
+        dataset=ti_dataset,
+        workspace_id="ws-ti",
+        review_required=False,
+        review_points=[{"id": "rp1", "severity": "warn"}],
+        dimensions=[],
+        measures=[],
+        decision={},
+    )
+    url = reverse(
+        "ti-metadata-review-points",
+        kwargs={"metadata_id": meta.metadata_id},
+    )
+    res = auth_client.get(url)
+    assert res.status_code == 200
+    assert res.data["review_required"] is False
+    assert isinstance(res.data["review_required"], bool)
+    assert res.data["dataset_id"] == str(ti_dataset.dataset_id)
+    assert res.data["table_id"] == str(ti_dataset.table_id)
+    assert isinstance(res.data["table_id"], str)
     assert res.data["review_points"] == [{"id": "rp1", "severity": "warn"}]
+    assert res.data["review_points_count"] == len(res.data["review_points"]) == 1
+
+
+@pytest.mark.django_db
+def test_metadata_review_points_count_zero_when_empty(auth_client, ti_dataset):
+    meta = AnalysisMetadata.objects.create(
+        dataset=ti_dataset,
+        workspace_id="ws-ti",
+        review_required=False,
+        review_points=[],
+        dimensions=[],
+        measures=[],
+        decision={},
+    )
+    url = reverse(
+        "ti-metadata-review-points",
+        kwargs={"metadata_id": meta.metadata_id},
+    )
+    res = auth_client.get(url)
+    assert res.status_code == 200
+    assert res.data["review_points"] == []
+    assert res.data["review_points_count"] == 0
+    assert isinstance(res.data["review_points_count"], int)
+    assert res.data["table_id"] == str(ti_dataset.table_id)
+
+
+@pytest.mark.django_db
+def test_metadata_review_points_table_id_empty_when_dataset_has_no_table(auth_client, ti_job):
+    ds = NormalizedDataset.objects.create(
+        workspace_id="ws-ti",
+        job=ti_job,
+        table=None,
+        schema_version="0.1",
+        dataset_payload={},
+    )
+    meta = AnalysisMetadata.objects.create(
+        dataset=ds,
+        workspace_id="ws-ti",
+        review_required=False,
+        review_points=[],
+        dimensions=[],
+        measures=[],
+        decision={},
+    )
+    url = reverse(
+        "ti-metadata-review-points",
+        kwargs={"metadata_id": meta.metadata_id},
+    )
+    res = auth_client.get(url)
+    assert res.status_code == 200
+    assert res.data["table_id"] == ""
+    assert isinstance(res.data["table_id"], str)
+    assert res.data["dataset_id"] == str(ds.dataset_id)
+    assert res.data["review_points"] == []
+
+
+@pytest.mark.django_db
+def test_metadata_review_points_dataset_id_empty_when_no_dataset_fk(auth_client):
+    """FK が無い場合は dataset_id は空文字（契約）。DB 通常行では埋まるが分岐を固定する。"""
+    mid = uuid.uuid4()
+    mock_meta = MagicMock()
+    mock_meta.metadata_id = mid
+    mock_meta.review_points = [{"id": "rp1", "severity": "warn"}]
+    mock_meta.review_required = False
+    mock_meta.dataset_id = None
+    url = reverse("ti-metadata-review-points", kwargs={"metadata_id": mid})
+    with patch(
+        "table_intelligence.views.get_object_or_404",
+        return_value=mock_meta,
+    ):
+        res = auth_client.get(url)
+    assert res.status_code == 200
+    assert res.data["dataset_id"] == ""
+    assert res.data["table_id"] == ""
+    assert res.data["review_points"] == [{"id": "rp1", "severity": "warn"}]
+    assert res.data["review_points_count"] == len(res.data["review_points"]) == 1
 
 
 @pytest.mark.django_db

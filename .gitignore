@@ -18,6 +18,7 @@ __pycache__/
 *.egg
 backend/media/
 backend/staticfiles/
+backend/logs/*.jsonl
 .pytest_cache/
 .mypy_cache/
 htmlcov/

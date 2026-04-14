@@ -26,6 +26,10 @@ from table_intelligence.models import (
     TableScope,
 )
 from table_intelligence.mvp_005_review_state import MVP_005_CANONICAL_REVIEW_SUMMARY_SCHEMA_REF
+from table_intelligence.mvp_013_candidate_review_signal import (
+    REVIEW_GAP_STUB_RISK_NOTE_BLOCKING,
+    REVIEW_GAP_STUB_RISK_NOTE_CAUTION,
+)
 from table_intelligence.mvp_013_suggestion_context import (
     MVP_013_GENERATION_CONSTRAINTS_REFERENCE_SCHEMA_REF,
 )
@@ -375,6 +379,143 @@ def test_suppression_applied_reads_review_records_not_moving_canonical(
     assert sset.suppression_applied[0]["source"] == "review_suppression_record"
     assert sset.suppression_applied[0]["session_id"] == str(ti_session.session_id)
     assert SuppressionRecord.objects.count() == n_sup
+    notes = sset.analysis_candidates[0]["risk_notes"]
+    assert REVIEW_GAP_STUB_RISK_NOTE_BLOCKING in notes
+    assert REVIEW_GAP_STUB_RISK_NOTE_CAUTION not in notes
+
+
+@pytest.mark.django_db
+def test_stub_risk_note_blocking_when_latest_session_open(auth_client, ti_metadata, ti_session):
+    """005 最新セッションが OPEN のとき、スタブ ``risk_notes`` に強めの注意が 1 件追記される。"""
+    assert ti_session.state == ReviewSessionState.OPEN
+    url_start = reverse("ti-suggestion-run-start")
+    res = auth_client.post(
+        url_start,
+        {"metadata_id": str(ti_metadata.metadata_id)},
+        format="json",
+    )
+    assert res.status_code == 202
+    sset = SuggestionSet.objects.get(pk=res.data["suggestion_run_ref"])
+    notes = sset.analysis_candidates[0]["risk_notes"]
+    assert REVIEW_GAP_STUB_RISK_NOTE_BLOCKING in notes
+    assert notes.count(REVIEW_GAP_STUB_RISK_NOTE_BLOCKING) == 1
+    assert REVIEW_GAP_STUB_RISK_NOTE_CAUTION not in notes
+    assert len(notes) == 3
+
+
+@pytest.mark.django_db
+def test_stub_risk_note_caution_when_latest_session_in_progress(auth_client, ti_metadata, user):
+    HumanReviewSession.objects.create(
+        metadata=ti_metadata,
+        workspace_id="ws-ti",
+        state=ReviewSessionState.IN_PROGRESS,
+        review_required_snapshot=True,
+        review_points_snapshot=[],
+        created_by=user,
+    )
+    url_start = reverse("ti-suggestion-run-start")
+    res = auth_client.post(
+        url_start,
+        {"metadata_id": str(ti_metadata.metadata_id)},
+        format="json",
+    )
+    assert res.status_code == 202
+    sset = SuggestionSet.objects.get(pk=res.data["suggestion_run_ref"])
+    notes = sset.analysis_candidates[0]["risk_notes"]
+    assert REVIEW_GAP_STUB_RISK_NOTE_CAUTION in notes
+    assert notes.count(REVIEW_GAP_STUB_RISK_NOTE_CAUTION) == 1
+    assert REVIEW_GAP_STUB_RISK_NOTE_BLOCKING not in notes
+    assert len(notes) == 3
+
+
+@pytest.mark.django_db
+def test_stub_no_review_gap_risk_note_when_latest_session_resolved(auth_client, ti_metadata, user):
+    HumanReviewSession.objects.create(
+        metadata=ti_metadata,
+        workspace_id="ws-ti",
+        state=ReviewSessionState.RESOLVED,
+        review_required_snapshot=False,
+        review_points_snapshot=[],
+        created_by=user,
+    )
+    url_start = reverse("ti-suggestion-run-start")
+    res = auth_client.post(
+        url_start,
+        {"metadata_id": str(ti_metadata.metadata_id)},
+        format="json",
+    )
+    assert res.status_code == 202
+    sset = SuggestionSet.objects.get(pk=res.data["suggestion_run_ref"])
+    notes = sset.analysis_candidates[0]["risk_notes"]
+    assert REVIEW_GAP_STUB_RISK_NOTE_BLOCKING not in notes
+    assert REVIEW_GAP_STUB_RISK_NOTE_CAUTION not in notes
+    assert len(notes) == 2
+
+
+@pytest.mark.django_db
+def test_blocking_skips_summary_stub_when_time_axis_present(auth_client, ti_dataset, user):
+    """blocking + ``004.time_axis`` ありのときだけ summary_stub を非生成（内部ルール）。"""
+    meta = AnalysisMetadata.objects.create(
+        dataset=ti_dataset,
+        workspace_id="ws-ti",
+        review_required=True,
+        review_points=[],
+        dimensions=[{"id": "d1"}],
+        measures=[{"id": "m1", "name": "amount"}],
+        time_axis={"field": "order_date", "grain": "month"},
+        decision={},
+    )
+    HumanReviewSession.objects.create(
+        metadata=meta,
+        workspace_id="ws-ti",
+        state=ReviewSessionState.OPEN,
+        review_required_snapshot=True,
+        review_points_snapshot=[],
+        created_by=user,
+    )
+    url_start = reverse("ti-suggestion-run-start")
+    res = auth_client.post(
+        url_start,
+        {"metadata_id": str(meta.metadata_id)},
+        format="json",
+    )
+    assert res.status_code == 202
+    sset = SuggestionSet.objects.get(pk=res.data["suggestion_run_ref"])
+    assert sset.analysis_candidates == []
+
+
+@pytest.mark.django_db
+def test_caution_with_time_axis_still_emits_stub_candidate(auth_client, ti_dataset, user):
+    """caution のみでは非生成しない（time_axis ありでも）。"""
+    meta = AnalysisMetadata.objects.create(
+        dataset=ti_dataset,
+        workspace_id="ws-ti",
+        review_required=True,
+        review_points=[],
+        dimensions=[{"id": "d1"}],
+        measures=[{"id": "m1", "name": "amount"}],
+        time_axis={"grain": "month"},
+        decision={},
+    )
+    HumanReviewSession.objects.create(
+        metadata=meta,
+        workspace_id="ws-ti",
+        state=ReviewSessionState.IN_PROGRESS,
+        review_required_snapshot=True,
+        review_points_snapshot=[],
+        created_by=user,
+    )
+    url_start = reverse("ti-suggestion-run-start")
+    res = auth_client.post(
+        url_start,
+        {"metadata_id": str(meta.metadata_id)},
+        format="json",
+    )
+    assert res.status_code == 202
+    sset = SuggestionSet.objects.get(pk=res.data["suggestion_run_ref"])
+    assert len(sset.analysis_candidates) == 1
+    assert REVIEW_GAP_STUB_RISK_NOTE_CAUTION in sset.analysis_candidates[0]["risk_notes"]
+    assert REVIEW_GAP_STUB_RISK_NOTE_BLOCKING not in sset.analysis_candidates[0]["risk_notes"]
 
 
 @pytest.mark.django_db

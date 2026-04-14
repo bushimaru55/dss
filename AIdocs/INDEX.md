@@ -51,3 +51,4 @@
 ## Changes
 - [2026-03-27 初期基盤構築](changes/2026-03-27-initial-foundation.md)
 - [2026-03-27 前処理基盤](changes/2026-03-27-preprocessing-foundation.md)
+- [2026-04-14 分析ファクト層プロトタイプ（実行プラン）](changes/2026-04-14-analysis-facts-layer-prototype-plan.md)

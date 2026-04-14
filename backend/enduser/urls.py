@@ -11,4 +11,6 @@ urlpatterns = [
     path("datasets/<int:dataset_id>/import/", views.dataset_import_confirm, name="enduser-dataset-import"),
     path("datasets/<int:dataset_id>/import", views.dataset_import_confirm),
     path("datasets/<int:dataset_id>", views.dataset_detail, name="enduser-dataset-detail"),
+    path("dev/analysis-audit/", views.analysis_audit_log, name="enduser-analysis-audit"),
+    path("dev/analysis-audit/download", views.analysis_audit_download, name="enduser-analysis-audit-download"),
 ]

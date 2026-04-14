@@ -16,6 +16,11 @@ from django.utils import timezone
 
 from table_intelligence.judgment_spike import build_judgment_from_read_observation
 from table_intelligence.mvp_004_dataset_inputs import apply_mvp_004_dataset_input_reflection
+from table_intelligence.mvp_013_candidate_review_signal import (
+    CandidateReviewSignal,
+    review_gap_risk_note_for_candidates,
+    summarize_review_outcome_for_candidates,
+)
 from table_intelligence.normalization_hints import (
     assemble_mvp_003_dataset_payload_artifacts,
     extract_normalization_input_hints_from_judgment_evidence,
@@ -157,6 +162,22 @@ def get_latest_artifact_refs_for_table(table: TableScope) -> dict[str, str]:
         "session_id": "",
         "suggestion_run_ref": "",
     }
+
+
+def build_table_summary_refs(table: TableScope) -> dict[str, str]:
+    """
+    ``GET /tables/{table_id}/`` の ``refs`` 用。
+
+    最新 ``NormalizedDataset`` 列由来の参照束（:func:`get_latest_artifact_refs_for_table`）に、
+    001 ``TableReadArtifact`` / 002 ``JudgmentResult`` の **latest 行**（``is_latest=True``）の **ID 導線**
+    を足す。値は **空文字**（行なし）または **UUID 文字列**。ペイロードは含めない。
+    """
+    refs = dict(get_latest_artifact_refs_for_table(table))
+    tra = get_latest_table_read_artifact_for_table(table)
+    jr = get_latest_judgment_result_for_table(table)
+    refs["read_artifact_id"] = str(tra.artifact_id) if tra else ""
+    refs["judgment_id"] = str(jr.judgment_id) if jr else ""
+    return refs
 
 
 def get_latest_judgment_result_for_table(table: TableScope) -> JudgmentResult | None:
@@ -984,6 +1005,37 @@ def _audit_suppression_from_session(session: HumanReviewSession | None) -> list[
 
 _MAX_STUB_EVIDENCE_ITEMS_PER_LIST = 8
 
+_STUB_CATEGORY_SUMMARY_STUB = "summary_stub"
+
+
+def _should_skip_stub_candidate_for_blocking_review_gap(
+    *,
+    stub_category: str,
+    metadata: AnalysisMetadata,
+    review_signal: CandidateReviewSignal,
+) -> bool:
+    """
+    blocking review gap 時に、このスタブ候補を **非生成**に寄せるか（内部ルール・狭く適用）。
+
+    現状は ``summary_stub`` のみ。``004.time_axis`` がある場合は時系列解釈前提への依存が強く、
+    未解決レビュー下では誤誘導を減らすため省略する。``time_axis`` なしの最小スタブは
+    ``risk_notes`` 付きで残す（Phase 3 第三段）。
+    """
+    if not review_signal["has_blocking_review_gap"]:
+        return False
+    if stub_category != _STUB_CATEGORY_SUMMARY_STUB:
+        return False
+    return metadata.time_axis is not None
+
+
+def _append_unique_risk_note(risk_notes: list[str], note: str | None) -> list[str]:
+    """``risk_notes`` へ追記する。同一文が既にあれば何もしない。"""
+    if not note:
+        return risk_notes
+    if note in risk_notes:
+        return risk_notes
+    return [*risk_notes, note]
+
 
 def _append_004_list_traces(evidence: list[dict], items: object, source_label: str) -> None:
     """``dimensions`` / ``measures`` の観測トレース（id/name の列挙に過ぎない。意味確定ではない）。"""
@@ -1003,9 +1055,33 @@ def _append_004_list_traces(evidence: list[dict], items: object, source_label: s
             )
 
 
-def _build_stub_analysis_candidates(metadata: AnalysisMetadata) -> list[dict]:
-    """013 完全生成の前段スタブ。004 の ``measures`` 非空検知とメタ観測トレースのみ（011/005 は候補選定に使わない）。"""
+def _build_stub_analysis_candidates(
+    metadata: AnalysisMetadata,
+    *,
+    review_signal: CandidateReviewSignal,
+) -> list[dict]:
+    """013 完全生成の前段スタブ。004 の ``measures`` 非空検知とメタ観測トレース。
+
+    005 由来の前提は ``HumanReviewSession`` を直に読まず、``review_signal`` のみから
+    ``risk_notes`` に短文を追記する（Phase 3 第二段）。Phase 3 第三段では blocking 時に
+    内部ルールで一部スタブのみ非生成に寄せうる（全候補一律ではない）。
+    """
+    _expected_rs = frozenset(
+        {
+            "review_signal_present",
+            "has_blocking_review_gap",
+            "has_cautionary_review_gap",
+            "has_resolution_support",
+        }
+    )
+    assert frozenset(review_signal.keys()) == _expected_rs
     if not metadata.measures:
+        return []
+    if _should_skip_stub_candidate_for_blocking_review_gap(
+        stub_category=_STUB_CATEGORY_SUMMARY_STUB,
+        metadata=metadata,
+        review_signal=review_signal,
+    ):
         return []
     evidence: list[dict] = [
         {"source": "004.metadata_id", "ref": str(metadata.metadata_id)},
@@ -1027,6 +1103,9 @@ def _build_stub_analysis_candidates(metadata: AnalysisMetadata) -> list[dict]:
         "Stub trace: emitted because 004.measures is non-empty; category/priority/readiness/gating "
         "are not finalized. 005/011 do not select this candidate (see generation_constraints_reference on GET).",
     ]
+    risk_notes = _append_unique_risk_note(
+        risk_notes, review_gap_risk_note_for_candidates(review_signal)
+    )
     return [
         {
             "candidate_id": str(uuid.uuid4()),
@@ -1087,7 +1166,10 @@ def create_suggestion_run_from_metadata(
 
     table = metadata.dataset.table if metadata.dataset_id else None
     suppression_applied = _audit_suppression_from_session(session)
-    analysis_candidates = _build_stub_analysis_candidates(metadata)
+    review_signal = summarize_review_outcome_for_candidates(session)
+    analysis_candidates = _build_stub_analysis_candidates(
+        metadata, review_signal=review_signal
+    )
 
     return SuggestionSet.objects.create(
         metadata=metadata,

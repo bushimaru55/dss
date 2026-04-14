@@ -49,10 +49,10 @@ from table_intelligence.mvp_013_suggestion_context import (
 from table_intelligence.services import (
     StaleMetadataError,
     accept_or_create_analysis_job,
+    build_table_summary_refs,
     create_review_session,
     create_suggestion_run_from_metadata,
     get_artifact_ref_bundles_for_table,
-    get_latest_artifact_refs_for_table,
     get_latest_judgment_result_for_table,
     get_latest_table_read_artifact_for_table,
     judgment_result_to_judgment_api_dict,
@@ -77,7 +77,7 @@ class TableScopeSummaryView(APIView):
         return Response(
             {
                 "table_id": str(table.table_id),
-                "refs": get_latest_artifact_refs_for_table(table),
+                "refs": build_table_summary_refs(table),
             },
             status=status.HTTP_200_OK,
         )
@@ -140,19 +140,30 @@ class AnalysisMetadataReviewPointsView(APIView):
 
     permission_classes = [IsAuthenticated]
 
+    def _build_review_points_response(self, meta: AnalysisMetadata) -> dict:
+        """review-points GET の top-level dict。キー順・値の契約は既存仕様のまま。"""
+        dataset_id = str(meta.dataset_id) if meta.dataset_id else ""
+        table_id = ""
+        if meta.dataset_id:
+            tid = meta.dataset.table_id
+            table_id = str(tid) if tid else ""
+        review_points = list(meta.review_points)
+        return {
+            "metadata_id": str(meta.metadata_id),
+            "table_id": table_id,
+            "review_required": bool(meta.review_required),
+            "dataset_id": dataset_id,
+            "review_points_count": len(review_points),
+            "review_points": review_points,
+        }
+
     def get(self, request, metadata_id, *args, **kwargs):
         meta = get_object_or_404(
-            scoped_filter(
-                AnalysisMetadata.objects.select_related("dataset"),
-                request.user,
-            ),
+            scoped_filter(AnalysisMetadata.objects.all(), request.user),
             pk=metadata_id,
         )
         return Response(
-            {
-                "metadata_id": str(meta.metadata_id),
-                "review_points": list(meta.review_points),
-            },
+            self._build_review_points_response(meta),
             status=status.HTTP_200_OK,
         )
 

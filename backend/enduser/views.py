@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
+from analysis_runs.audit_log import read_recent_audit_entries
 from analysis_runs.models import AnalysisRun
 from analysis_runs.services import run_analysis_to_completion
 from datasets.models import Dataset, DatasetStatus, FileType, SheetStructureStatus
@@ -274,6 +278,14 @@ def dataset_detail(request, dataset_id: int):
             dataset__workspace__owner=request.user,
         ).first()
 
+    last_run_facts_json = ""
+    last_run_plan_json = ""
+    last_run_evidence_json = ""
+    if last_run and last_run.status == AnalysisRun.Status.SUCCEEDED:
+        last_run_facts_json = json.dumps(last_run.result_json or {}, ensure_ascii=False, indent=2)
+        last_run_plan_json = json.dumps(last_run.plan_json or {}, ensure_ascii=False, indent=2)
+        last_run_evidence_json = json.dumps(last_run.evidence or {}, ensure_ascii=False, indent=2)
+
     return render(
         request,
         "enduser/dataset_detail.html",
@@ -283,5 +295,42 @@ def dataset_detail(request, dataset_id: int):
             "columns": columns,
             "suggestions": suggestions,
             "last_run": last_run,
+            "last_run_facts_json": last_run_facts_json,
+            "last_run_plan_json": last_run_plan_json,
+            "last_run_evidence_json": last_run_evidence_json,
         },
+    )
+
+
+@login_required
+def analysis_audit_log(request):
+    """分析レビュー用 JSONL の直近エントリを表示（Cursor が同ファイルを読む前提）。"""
+    entries = read_recent_audit_entries(max_lines=200)
+    path = Path(settings.ANALYSIS_AUDIT_LOG_PATH)
+    try:
+        log_rel = path.relative_to(settings.BASE_DIR)
+    except ValueError:
+        log_rel = path
+    return render(
+        request,
+        "enduser/analysis_audit.html",
+        {
+            "entries": entries,
+            "log_path_display": str(log_rel),
+            "log_exists": path.exists(),
+        },
+    )
+
+
+@login_required
+def analysis_audit_download(request):
+    """JSONL をそのままダウンロード（レビュー用）。"""
+    path = Path(settings.ANALYSIS_AUDIT_LOG_PATH)
+    if not path.is_file():
+        raise Http404()
+    return FileResponse(
+        path.open("rb"),
+        content_type="text/plain; charset=utf-8",
+        as_attachment=True,
+        filename="analysis_audit.jsonl",
     )

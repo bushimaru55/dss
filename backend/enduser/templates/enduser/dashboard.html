@@ -2,8 +2,9 @@
 {% block content %}
 <div class="card">
   <h2>マイデータ（一覧）</h2>
-  <p class="muted" style="margin-top:0">操作は2ステップです：① 分析するファイルをアップロード ② ファイル内容を確認して項目確認を進める。</p>
+  <p class="muted" style="margin-top:0">操作の流れ（動作検証）：① <strong>CSV / XLSX をアップロード</strong> ② <strong>インポート確認</strong>でシート・ヘッダー行を確定 ③ データセット<strong>詳細</strong>で「分析準備」→ 質問を送信 ④ 返答の下で <strong>分析ファクト（result_json）</strong> を確認。</p>
   <a class="btn" href="{% url 'enduser-dataset-new' %}">ステップ1：新規アップロード</a>
+  <p style="margin-top:12px"><a href="{% url 'enduser-analysis-audit' %}">分析レビュー用ログ（Cursor で JSONL を開いて精度確認）</a></p>
 </div>
 <div class="card">
   <table>

@@ -99,6 +99,11 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# 分析レビュー用 JSONL（analysis_runs.audit_log）。Cursor で開いて精度確認する想定。
+ANALYSIS_AUDIT_LOG_PATH = Path(
+    os.environ.get("ANALYSIS_AUDIT_LOG_PATH", str(BASE_DIR / "logs" / "analysis_audit.jsonl"))
+)
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {

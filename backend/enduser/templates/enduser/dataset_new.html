@@ -2,8 +2,7 @@
 {% block content %}
 <div class="card" style="max-width:680px">
   <h2>ステップ1：分析するファイルをステップ2へ進む（アップロード）</h2>
-  <p class="muted">CSV または XLSX を選び、ステップ2へ進む（アップロード）してください。
-  次に <strong>ステップ2：ファイル内容の確認</strong> へ進みます。</p>
+  <p class="muted">CSV または XLSX を選び、アップロードしてください。次の画面で <strong>シート・ヘッダー行</strong>を確定したあと、データセット詳細で <strong>分析準備</strong>と<strong>質問</strong>を行い、<strong>分析ファクト（JSON）</strong>で集計正本を検証できます。</p>
   <form method="post" enctype="multipart/form-data">
     {% csrf_token %}
     <div style="margin-bottom:8px">{{ form.name.label_tag }}<br/>{{ form.name }}</div>
